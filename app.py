@@ -40,7 +40,7 @@ _status = {
 # DATABASE
 # ============================================================
 def get_db():
-    return psycopg2.connect(os.environ["DATABASE_URL"], sslmode="require")
+    return psycopg2.connect(os.environ["DATABASE_URL"], sslmode="prefer")
 
 def init_db():
     with get_db() as conn:
