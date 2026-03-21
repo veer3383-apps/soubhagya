@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Soubhagya Match — Sonali</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+    * { font-family: 'Inter', sans-serif; }
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body class="bg-slate-50">
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useMemo, useEffect, useCallback, useRef } = React;
+
+// ── Tiny SVG icon system ─────────────────────────────────────
+const ICONS = {
+  user:      "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+  mapPin:    "M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z M12 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2z",
+  briefcase: "M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4l2-3h4l2 3h4a2 2 0 0 1 2 2z",
+  grad:      "M22 10v6M2 10l10-5 10 5-10 5z M6 12v5c3 3 9 3 12 0v-5",
+  heart:     "M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z",
+  clock:     "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z M12 6v6l4 2",
+  star:      "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z",
+  chevron:   "M9 18l6-6-6-6",
+  info:      "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z M12 8h.01 M12 12v4",
+  external:  "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6 M15 3h6v6 M10 14L21 3",
+  search:    "M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z",
+  filter:    "M22 3H2l8 9.46V19l4 2V12.46L22 3z",
+  dollar:    "M12 1v22 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
+  users:     "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M23 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75 M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+  sort:      "M21 16l-4 4-4-4 M17 20V4 M3 8l4-4 4 4 M7 4v16",
+  refresh:   "M23 4v6h-6 M1 20v-6h6 M3.51 9a9 9 0 0 1 14.85-3.36L23 10 M1 14l4.64 4.36A9 9 0 0 0 20.49 15",
+  loader:    "M12 2v4 M12 18v4 M4.93 4.93l2.83 2.83 M16.24 16.24l2.83 2.83 M2 12h4 M18 12h4 M4.93 19.07l2.83-2.83 M16.24 7.76l2.83-2.83",
+  alert:     "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z M12 8v4 M12 16h.01",
+  play:      "M5 3l14 9-14 9V3z",
+  database:  "M12 2a9 3 0 1 0 0 .001M3 5v14a9 3 0 0 0 18 0V5 M3 12a9 3 0 0 0 18 0",
+  zap:       "M13 2L3 14h9l-1 8 10-12h-9l1-8z",
+  check:     "M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3",
+  login:     "M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4 M10 17l5-5-5-5 M15 12H3",
+  scan:      "M3 7V5a2 2 0 0 1 2-2h2 M17 3h2a2 2 0 0 1 2 2v2 M21 17v2a2 2 0 0 1-2 2h-2 M7 21H5a2 2 0 0 1-2-2v-2 M8 12h8",
+  download:  "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3",
+  cpu:       "M18 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z M9 9h6v6H9z M9 1v3 M15 1v3 M9 20v3 M15 20v3 M20 9h3 M20 14h3 M1 9h3 M1 14h3",
+};
+const Ic = ({ n, size=16, cls='' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={cls}>
+    <path d={ICONS[n]}/>
+  </svg>
+);
+
+// ── Helpers ──────────────────────────────────────────────────
+const daysAgo = (s) => {
+  if (!s) return 'N/A';
+  const d = new Date(s), t = new Date();
+  d.setHours(0,0,0,0); t.setHours(0,0,0,0);
+  const n = Math.floor((t-d)/86400000);
+  return n===0?'Today':n===1?'Yesterday':n>0?`${n}d ago`:'Recently';
+};
+
+// ── Pipeline steps ───────────────────────────────────────────
+const STEPS = [
+  { key:'login',    icon:'login',    label:'Logging In'       },
+  { key:'counting', icon:'scan',     label:'Counting Pages'   },
+  { key:'scanning', icon:'search',   label:'Scanning Profiles'},
+  { key:'scraping', icon:'download', label:'Fetching Details' },
+  { key:'matching', icon:'cpu',      label:'Ashtakoot Match'  },
+];
+
+// ── Progress overlay ─────────────────────────────────────────
+const ProgressOverlay = ({ st }) => {
+  const si  = STEPS.findIndex(s => s.key === st.step);
+  const pct = st.total > 0 ? Math.round(st.progress/st.total*100) : 0;
+  const hasBar = ['scanning','scraping','matching'].includes(st.step);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+      style={{backdropFilter:'blur(8px)'}}>
+      <div className="bg-white rounded-3xl p-8 w-full max-w-lg mx-4 shadow-2xl">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-10 h-10 rounded-xl bg-pink-100 flex items-center justify-center text-pink-600">
+            <Ic n="loader" size={20} cls="spin"/>
+          </div>
+          <div>
+            <h2 className="font-bold text-lg">Pipeline Running</h2>
+            <p className="text-slate-400 text-sm">Please wait — this takes a few minutes</p>
+          </div>
+        </div>
+        <div className="space-y-2 mb-8">
+          {STEPS.map((s, i) => {
+            const done=i<si, cur=i===si, pend=i>si;
+            return (
+              <div key={s.key} className={`flex items-center gap-3 p-3 rounded-xl
+                ${cur?'bg-pink-50 border border-pink-200':''}
+                ${done?'opacity-40':''}${pend?' opacity-20':''}`}>
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0
+                  ${done?'bg-green-100 text-green-600':cur?'bg-pink-100 text-pink-600':'bg-slate-100 text-slate-400'}`}>
+                  {done?<Ic n="check" size={15}/>:cur?<Ic n="loader" size={15} cls="spin"/>:<Ic n={s.icon} size={15}/>}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold">{s.label}</div>
+                  {cur && <div className="text-xs text-pink-600 truncate">{st.message}</div>}
+                </div>
+                {cur && hasBar && st.total>0 &&
+                  <span className="text-xs font-bold text-pink-600 shrink-0">{st.progress}/{st.total}</span>}
+              </div>
+            );
+          })}
+        </div>
+        {hasBar && st.total>0 && (
+          <div>
+            <div className="flex justify-between text-xs text-slate-400 mb-1.5">
+              <span className="truncate mr-2">{st.message}</span>
+              <span className="font-bold text-pink-600 shrink-0">{pct}%</span>
+            </div>
+            <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-300"
+                style={{width:`${pct}%`,background:'linear-gradient(to right,#ec4899,#fb7185)'}}/>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ── Startup dialog ───────────────────────────────────────────
+const StartupDialog = ({ info, onExisting, onFresh }) => {
+  const [ageMin, setAgeMin] = useState(33);
+  const [ageMax, setAgeMax] = useState(39);
+  const [months, setMonths] = useState(12);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
+      style={{backdropFilter:'blur(8px)'}}>
+      <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
+        <div className="p-6 text-white" style={{background:'linear-gradient(135deg,#db2777,#f43f5e)'}}>
+          <div className="flex items-center gap-3 mb-1">
+            <Ic n="heart" size={22} cls="shrink-0"/>
+            <h1 className="text-2xl font-black">Soubhagya Match</h1>
+          </div>
+          <p className="text-pink-100 text-sm">Ashtakoot Matchmaking for Sonali</p>
+        </div>
+        <div className="p-6 space-y-4">
+
+          {/* Existing results */}
+          {info?.exists && (
+            <div className="p-4 bg-green-50 border border-green-200 rounded-2xl">
+              <div className="flex items-center gap-2 mb-1 text-green-700">
+                <Ic n="database" size={15}/><span className="font-bold text-sm">Existing results found</span>
+              </div>
+              <p className="text-xs text-green-600 mb-3">{info.count} matches · Last run: {info.last_run}</p>
+              <button onClick={onExisting}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-bold transition-colors">
+                <Ic n="database" size={14}/> Load Existing Results
+              </button>
+            </div>
+          )}
+
+          {/* Age range */}
+          <div className="bg-slate-50 rounded-2xl p-4">
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Age Range</p>
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <p className="text-xs text-slate-400 mb-1">Min</p>
+                <input type="number" min={18} max={70} value={ageMin}
+                  onChange={e=>setAgeMin(+e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-pink-400"/>
+              </div>
+              <span className="text-slate-300 font-bold mt-5">—</span>
+              <div className="flex-1">
+                <p className="text-xs text-slate-400 mb-1">Max</p>
+                <input type="number" min={18} max={70} value={ageMax}
+                  onChange={e=>setAgeMax(+e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-pink-400"/>
+              </div>
+            </div>
+          </div>
+
+          {/* Activity */}
+          <div className="bg-slate-50 rounded-2xl p-4">
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Profile Activity</p>
+            <p className="text-xs text-slate-400 mb-3">Only include profiles active within:</p>
+            <div className="grid grid-cols-3 gap-2">
+              {[3,6,12].map(m=>(
+                <button key={m} onClick={()=>setMonths(m)}
+                  className={`py-2.5 rounded-xl text-sm font-bold border transition-all
+                    ${months===m?'text-white border-pink-600':'bg-white text-slate-600 border-slate-200 hover:border-pink-300'}`}
+                  style={months===m?{background:'#db2777'}:{}}>
+                  {m} months
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button onClick={()=>onFresh({agemin:ageMin,agemax:ageMax,months})}
+            className="w-full flex items-center justify-center gap-2 py-3.5 text-white rounded-2xl font-bold transition-colors"
+            style={{background:'#db2777'}}>
+            <Ic n="play" size={17}/> Start Fresh Scrape
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Score bar ────────────────────────────────────────────────
+const ScoreBar = ({ label, value, max }) => (
+  <div className="mb-3">
+    <div className="flex justify-between text-xs mb-1">
+      <span className="text-gray-400">{label}</span>
+      <span className="font-bold text-pink-600">{value}/{max}</span>
+    </div>
+    <div className="w-full bg-gray-100 rounded-full h-1.5">
+      <div className="h-full rounded-full" style={{width:`${(value/max)*100}%`,background:'linear-gradient(to right,#ec4899,#fb7185)'}}/>
+    </div>
+  </div>
+);
+
+// ── Profile modal ────────────────────────────────────────────
+const Modal = ({ profile:p, onClose }) => {
+  if (!p) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
+      style={{backdropFilter:'blur(4px)'}} onClick={onClose}>
+      <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col md:flex-row"
+        onClick={e=>e.stopPropagation()}>
+
+        {/* Left */}
+        <div className="md:w-1/3 bg-slate-50 p-6 border-r flex flex-col items-center overflow-y-auto">
+          <div className="relative mb-6">
+            <img src={p.image_full} alt={p.id}
+              onError={e=>{e.target.src=`https://ui-avatars.com/api/?name=${p.id}&size=300&background=db2777&color=fff&bold=true`;}}
+              className="w-44 h-44 rounded-2xl object-cover shadow-lg border-4 border-white"/>
+            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 text-white px-4 py-1 rounded-full text-sm font-bold whitespace-nowrap shadow"
+              style={{background:'#db2777'}}>Rank #{p.rank}</div>
+          </div>
+          <h2 className="text-xl font-bold mt-2 mb-1">{p.id}</h2>
+          <p className="text-slate-400 text-center text-sm mb-5">{p.Profession||'N/A'}</p>
+          <div className="w-full space-y-2.5 text-sm">
+            {[['heart','pink',`${p.compatibility_percent}% Match`],
+              ['dollar','blue',p["Monthly income"]||'N/A'],
+              ['users','purple',p.Cast||'N/A'],
+              ['clock','orange',`Active ${daysAgo(p.last_seen)}`]].map(([ic,c,t])=>(
+              <div key={t} className="flex items-center gap-2.5">
+                <div className={`p-1.5 rounded-lg bg-${c}-100 text-${c}-600`}><Ic n={ic} size={14}/></div>
+                <span className="text-slate-600">{t}</span>
+              </div>
+            ))}
+          </div>
+          <a href={p.url} target="_blank" rel="noopener noreferrer"
+            className="mt-6 w-full flex items-center justify-center gap-2 py-2.5 text-white rounded-xl text-sm font-medium transition-colors"
+            style={{background:'#db2777'}}>
+            View Profile <Ic n="external" size={14}/>
+          </a>
+        </div>
+
+        {/* Right */}
+        <div className="md:w-2/3 p-6 md:p-8 overflow-y-auto">
+          <div className="flex justify-between items-start mb-6">
+            <div>
+              <h3 className="text-lg font-bold mb-0.5">Compatibility Breakdown</h3>
+              <p className="text-slate-400 text-sm">Ashtakoot Guna — {p.match_score}/36</p>
+            </div>
+            <button onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded-full text-slate-400 text-xl">✕</button>
+          </div>
+          <div className="grid grid-cols-2 gap-x-8 mb-8">
+            {Object.entries(p.score_breakdown||{}).map(([k,v])=>{
+              const m=k.match(/\((\d+)\)/);
+              return <ScoreBar key={k} label={k.split('(')[0].trim()} value={v} max={m?+m[1]:8}/>;
+            })}
+          </div>
+          <div className="grid grid-cols-2 gap-6">
+            <div className="space-y-2.5">
+              <h4 className="font-bold text-sm flex items-center gap-1.5 border-b pb-2 text-slate-700">
+                <Ic n="info" size={13}/> Personal
+              </h4>
+              {[['Born',p.DOB],['Religion',p.Religion],['Education',p["Education Detail"]],
+                ['Height',p.Height],['Blood Group',p.BloodGroup]].filter(([,v])=>v).map(([k,v])=>(
+                <div key={k} className="flex justify-between text-sm">
+                  <span className="text-slate-400">{k}</span>
+                  <span className="font-medium text-right max-w-[150px] truncate">{v}</span>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-2.5">
+              <h4 className="font-bold text-sm flex items-center gap-1.5 border-b pb-2 text-slate-700">
+                <Ic n="star" size={13}/> Astrology
+              </h4>
+              {[['Rashi',p.Rashi],['Birth Time',p["Birth Time"]],['Birth Place',p["Birth Place"]]].filter(([,v])=>v).map(([k,v])=>(
+                <div key={k} className="flex justify-between text-sm">
+                  <span className="text-slate-400">{k}</span>
+                  <span className="font-medium text-right max-w-[150px] truncate">{v}</span>
+                </div>
+              ))}
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-400">Nadi Dosha</span>
+                <span className={`px-2 py-0.5 rounded text-xs font-bold ${p.nadi_dosha?'bg-red-100 text-red-600':'bg-green-100 text-green-600'}`}>
+                  {p.nadi_dosha?'Yes ⚠️':'No ✓'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Main App ─────────────────────────────────────────────────
+function App() {
+  const [phase, setPhase]     = useState('init');
+  const [info, setInfo]       = useState(null);
+  const [profiles, setProfiles] = useState([]);
+  const [st, setSt]           = useState({running:false,message:'',step:'',progress:0,total:0});
+  const [selected, setSelected] = useState(null);
+  const [search, setSearch]   = useState('');
+  const [cast, setCast]       = useState('All');
+  const [city, setCity]       = useState('All');
+  const [sort, setSort]       = useState('rankAsc');
+  const [error, setError]     = useState(null);
+  const pollRef = useRef(null);
+
+  useEffect(()=>{
+    fetch('/api/has_results').then(r=>r.json())
+      .then(d=>{setInfo(d);setPhase('startup');})
+      .catch(()=>setPhase('startup'));
+  },[]);
+
+  const loadResults = useCallback(()=>
+    fetch('/api/results').then(r=>r.json()).then(d=>setProfiles(Array.isArray(d)?d:[])), []);
+
+  const pollStatus = useCallback(async()=>{
+    const d = await fetch('/api/status').then(r=>r.json());
+    setSt(d);
+    if(!d.running && d.step==='done'){
+      clearInterval(pollRef.current);
+      await loadResults();
+      setPhase('ready');
+    }
+    if(!d.running && d.step==='error'){
+      clearInterval(pollRef.current);
+      setError(d.message);
+      setPhase('ready');
+    }
+  },[loadResults]);
+
+  const handleExisting = useCallback(async()=>{
+    await loadResults(); setPhase('ready');
+  },[loadResults]);
+
+  const handleFresh = useCallback(async(params)=>{
+    setPhase('running'); setError(null);
+    await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(params)});
+    clearInterval(pollRef.current);
+    pollRef.current = setInterval(pollStatus,1500);
+  },[pollStatus]);
+
+  useEffect(()=>()=>clearInterval(pollRef.current),[]);
+
+  const casts  = useMemo(()=>['All',...new Set(profiles.map(p=>p.Cast).filter(Boolean))].sort(),[profiles]);
+  const cities = useMemo(()=>['All',...new Set(profiles.map(p=>p.City).filter(Boolean))].sort(),[profiles]);
+  const topPct = useMemo(()=>profiles.length?Math.max(...profiles.map(p=>p.compatibility_percent||0)):0,[profiles]);
+  const avg    = useMemo(()=>profiles.length?(profiles.reduce((s,p)=>s+(p.match_score||0),0)/profiles.length).toFixed(1):0,[profiles]);
+
+  const filtered = useMemo(()=>{
+    const q=search.toLowerCase();
+    return profiles
+      .filter(p=>(!q||(p.id||'').toLowerCase().includes(q)||(p.Profession||'').toLowerCase().includes(q))
+        &&(cast==='All'||p.Cast===cast)&&(city==='All'||p.City===city))
+      .sort((a,b)=>sort==='scoreDesc'?(b.match_score||0)-(a.match_score||0)
+        :sort==='lastSeenDesc'?new Date(b.last_seen||0)-new Date(a.last_seen||0)
+        :(a.rank||999)-(b.rank||999));
+  },[profiles,search,cast,city,sort]);
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      {phase==='startup' && <StartupDialog info={info} onExisting={handleExisting} onFresh={handleFresh}/>}
+      {phase==='running' && <ProgressOverlay st={st}/>}
+
+      <div className="p-4 md:p-8">
+        {/* Header */}
+        <header className="max-w-7xl mx-auto mb-8">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+            <div>
+              <h1 className="text-4xl md:text-5xl font-black mb-2"
+                style={{background:'linear-gradient(to right,#db2777,#fb7185)',WebkitBackgroundClip:'text',backgroundClip:'text',color:'transparent'}}>
+                Potential Soulmates
+              </h1>
+              <p className="text-slate-400 text-sm">
+                Matches for <strong className="text-slate-800">Sonali</strong>
+                {info?.last_run && <span className="ml-2">· Last run: {info.last_run}</span>}
+              </p>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              {[['Top Match',`${topPct}%`,'#22c55e'],['Avg Score',avg,'#fb7185'],['Shown',filtered.length,'#60a5fa']].map(([l,v,c])=>(
+                <div key={l} className="bg-white px-5 py-3 rounded-2xl shadow-sm border border-slate-100">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">{l}</div>
+                  <div className="text-2xl font-black" style={{color:c}}>{v}</div>
+                </div>
+              ))}
+              <button onClick={()=>setPhase('startup')}
+                className="flex items-center gap-2 px-5 py-3 text-white rounded-2xl font-bold text-sm transition-colors"
+                style={{background:'#db2777'}}>
+                <Ic n="refresh" size={14}/> New Run
+              </button>
+            </div>
+          </div>
+          {error && <div className="mt-4 flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-700 text-sm">
+            <Ic n="alert" size={14}/> {error}
+          </div>}
+        </header>
+
+        {/* Controls */}
+        <section className="max-w-7xl mx-auto mb-8 sticky top-4 z-40">
+          <div className="bg-white/90 p-3 rounded-2xl shadow-lg border border-slate-100 flex flex-col lg:flex-row gap-3 items-center"
+            style={{backdropFilter:'blur(8px)'}}>
+            <div className="w-full lg:flex-1 relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Ic n="search" size={16}/></span>
+              <input type="text" placeholder="Search ID or profession..."
+                className="w-full bg-slate-50 rounded-xl pl-10 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-pink-400"
+                value={search} onChange={e=>setSearch(e.target.value)}/>
+            </div>
+            <div className="flex flex-wrap gap-2 w-full lg:w-auto">
+              {[
+                {ic:'filter',  val:cast, set:setCast, opts:casts},
+                {ic:'mapPin',  val:city, set:setCity, opts:['All',...cities.filter(c=>c!=='All')]},
+                {ic:'sort',    val:sort, set:setSort, opts:[['rankAsc','Best Match'],['scoreDesc','Highest Score'],['lastSeenDesc','Recently Active']]},
+              ].map(({ic,val,set,opts},i)=>(
+                <div key={i} className="flex-1 lg:flex-none flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-xl px-3 focus-within:ring-2 focus-within:ring-pink-400">
+                  <span className="text-slate-400 shrink-0"><Ic n={ic} size={13}/></span>
+                  <select className="bg-transparent text-sm outline-none cursor-pointer py-2.5 w-full min-w-[100px]"
+                    value={val} onChange={e=>set(e.target.value)}>
+                    {opts.map(o=>Array.isArray(o)?<option key={o[0]} value={o[0]}>{o[1]}</option>:<option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Empty state */}
+        {phase==='ready' && profiles.length===0 && (
+          <div className="max-w-7xl mx-auto py-20 text-center">
+            <div className="w-20 h-20 bg-pink-50 rounded-full flex items-center justify-center mx-auto mb-4 text-pink-400">
+              <Ic n="play" size={32}/>
+            </div>
+            <h2 className="text-2xl font-bold mb-2">No results yet</h2>
+            <p className="text-slate-400">Click <strong>New Run</strong> to start.</p>
+          </div>
+        )}
+
+        {/* Grid */}
+        {filtered.length > 0 && (
+          <main className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            {filtered.map(p=>(
+              <div key={p.id} onClick={()=>setSelected(p)}
+                className="group bg-white rounded-3xl overflow-hidden border border-slate-100 cursor-pointer flex flex-col"
+                style={{transition:'all .3s',boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}
+                onMouseEnter={e=>{e.currentTarget.style.boxShadow='0 20px 40px rgba(0,0,0,0.12)';e.currentTarget.style.transform='translateY(-6px)';}}
+                onMouseLeave={e=>{e.currentTarget.style.boxShadow='0 1px 3px rgba(0,0,0,0.06)';e.currentTarget.style.transform='';}}>
+
+                <div className="h-60 relative overflow-hidden shrink-0">
+                  <img src={p.image_full} alt={p.id}
+                    onError={e=>{e.target.src=`https://ui-avatars.com/api/?name=${p.id}&size=400&background=db2777&color=fff&bold=true`;}}
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"/>
+                  <div className="absolute inset-0" style={{background:'linear-gradient(to top,rgba(0,0,0,.8),rgba(0,0,0,.1),transparent)'}}/>
+                  <div className="absolute bottom-3 left-4 right-4 text-white">
+                    <div className="flex gap-1.5 mb-1">
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold" style={{background:'#db2777'}}>#{p.rank}</span>
+                      <span className="bg-white/20 px-2 py-0.5 rounded-md text-[10px] font-bold truncate max-w-[110px]">
+                        {(p.Cast||'N/A').split('-')[0].trim()}
+                      </span>
+                    </div>
+                    <h3 className="font-bold text-lg">{p.id}</h3>
+                  </div>
+                  <div className="absolute top-3 right-3 bg-white px-2.5 py-1.5 rounded-xl flex flex-col items-center shadow">
+                    <span className="text-[9px] font-bold text-slate-400 leading-none mb-0.5">MATCH</span>
+                    <span className="text-base font-black leading-none" style={{color:'#f43f5e'}}>{p.compatibility_percent}%</span>
+                  </div>
+                </div>
+
+                <div className="p-4 flex-1 flex flex-col">
+                  <div className="space-y-2 mb-3 flex-1 text-slate-500 text-sm">
+                    {[[<Ic n="briefcase" size={13}/>,p.Profession||'Not listed'],
+                      [<Ic n="mapPin" size={13}/>,`${p.City||'?'}, GOA`],
+                      [<Ic n="grad" size={13}/>,p.Education||'Not listed']].map(([ic,t],i)=>(
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="text-slate-300 shrink-0">{ic}</span>
+                        <span className="truncate">{t}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-50 px-2.5 py-1.5 rounded-lg mb-3">
+                    <Ic n="clock" size={11} cls="text-orange-400"/> Active: {daysAgo(p.last_seen)}
+                  </div>
+                  <div className="flex items-center justify-between border-t pt-3">
+                    <div>
+                      <div className="text-xs text-slate-400">Income</div>
+                      <div className="font-bold text-sm truncate max-w-[120px]">{p["Monthly income"]||'N/A'}</div>
+                    </div>
+                    <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-400
+                      group-hover:text-white transition-all"
+                      style={{}}
+                      ref={el=>{if(el){el.style.background=el.closest('.group')&&el.closest('.group').matches(':hover')?'#db2777':'';}}}>
+                      <Ic n="chevron" size={15}/>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </main>
+        )}
+
+        {profiles.length>0 && filtered.length===0 && (
+          <div className="max-w-7xl mx-auto py-20 text-center">
+            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+              <Ic n="search" size={26}/>
+            </div>
+            <h2 className="text-xl font-bold mb-1">No matches found</h2>
+            <p className="text-slate-400 text-sm">Try adjusting filters.</p>
+          </div>
+        )}
+
+        <footer className="max-w-7xl mx-auto mt-16 pt-6 pb-8 border-t border-slate-100 text-center text-slate-400 text-xs">
+          Ashtakoot Guna Matching · Soubhagya Laxmi Matrimony · Matchmaking for Sonali
+        </footer>
+      </div>
+
+      <Modal profile={selected} onClose={()=>setSelected(null)}/>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

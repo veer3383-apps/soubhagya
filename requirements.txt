@@ -1,0 +1,5 @@
+flask
+flask-cors
+playwright
+pyswisseph
+psycopg2-binary
