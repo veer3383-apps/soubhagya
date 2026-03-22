@@ -59,10 +59,28 @@ const Ic = ({ n, size=16, cls='' }) => (
 // ── Helpers ──────────────────────────────────────────────────
 const daysAgo = (s) => {
   if (!s) return 'N/A';
-  const d = new Date(s), t = new Date();
-  d.setHours(0,0,0,0); t.setHours(0,0,0,0);
-  const n = Math.floor((t-d)/86400000);
-  return n===0?'Today':n===1?'Yesterday':n>0?`${n}d ago`:'Recently';
+
+  const d = new Date(s);
+  const t = new Date();
+
+  d.setHours(0,0,0,0);
+  t.setHours(0,0,0,0);
+
+  const days = Math.floor((t - d) / 86400000);
+
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+
+  if (days < 30) return `${days}d ago`;
+
+  const months = Math.floor(days / 30);
+  const remDays = days % 30;
+
+  if (remDays === 0) {
+    return `${months} ${months === 1 ? 'month' : 'months'} ago`;
+  }
+
+  return `${months} ${months === 1 ? 'month' : 'months'}, ${remDays}d ago`;
 };
 
 const getAge = (dob) => {
