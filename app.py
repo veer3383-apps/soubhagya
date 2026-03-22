@@ -427,27 +427,66 @@ def get_profile_ids(page, total_pages, search_url):
     return profiles
 
 def get_shortlisted_ids(page):
-    """Scrape all profile IDs from the shortlisted activity page."""
-    _sl_status["message"] = "Opening shortlisted page..."
-    page.goto(SHORTLISTED_URL)
-    page.wait_for_timeout(2500)
-    return _get_activity_ids(page)
+    """Scrape all shortlisted profile IDs across all pages."""
+    return get_activity_ids(page, SHORTLISTED_URL, "shortlisted")
 
-def get_activity_ids(page, url, label=""):
-    """Generic scraper for any activity page (shortlisted, interest_me, interest_to)."""
-    page.goto(url)
-    page.wait_for_timeout(2500)
-    return _get_activity_ids(page, label)
-
-def _get_activity_ids(page, label=""):
+def get_activity_ids(page, base_url, label="", status_ref=None):
+    """
+    Generic paginated scraper for activity pages.
+    Handles: ?type=shortlisted&page=N, ?type=interest_me&page=N etc.
+    """
     ids, seen = [], set()
-    for link in page.query_selector_all("a[href*='/profile/']"):
-        href = link.get_attribute("href") or ""
-        if "/profile/" in href:
-            pid = href.split("/profile/")[-1].split("?")[0].strip("/")
-            if pid and pid not in seen:
-                seen.add(pid); ids.append(pid)
-    print(f"Found {len(ids)} {label} profile IDs")
+    page_num = 1
+
+    while True:
+        url = f"{base_url}&page={page_num}" if page_num > 1 else base_url
+        if status_ref:
+            status_ref["message"] = f"Scanning {label} page {page_num}..."
+        print(f"  Scanning {label} page {page_num}: {url}")
+
+        page.goto(url)
+        page.wait_for_timeout(2000)
+
+        content = page.content().lower()
+        # Stop if no data or redirected away
+        if "no data" in content or "no records" in content or "no activity" in content:
+            print(f"  No more data on page {page_num}, stopping.")
+            break
+
+        found_on_page = 0
+        for link in page.query_selector_all("a[href*='/profile/']"):
+            href = link.get_attribute("href") or ""
+            if "/profile/" in href:
+                pid = href.split("/profile/")[-1].split("?")[0].strip("/")
+                if pid and pid not in seen:
+                    seen.add(pid)
+                    ids.append(pid)
+                    found_on_page += 1
+
+        print(f"  Found {found_on_page} new IDs on page {page_num} (total: {len(ids)})")
+
+        # If nothing new found on this page, we're done
+        if found_on_page == 0:
+            break
+
+        # Check if a next page link exists
+        has_next = False
+        for link in page.query_selector_all(".pager a, a[href*='page=']"):
+            href = link.get_attribute("href") or ""
+            try:
+                p_num = int(href.split("page=")[-1].split("&")[0])
+                if p_num == page_num + 1:
+                    has_next = True
+                    break
+            except:
+                pass
+
+        if not has_next:
+            break
+
+        page_num += 1
+
+    print(f"  Total {label} IDs found: {len(ids)}")
     return ids
 
 def extract_profile(page, profile_id):
@@ -578,7 +617,7 @@ def _run_shortlisted_pipeline():
         with sync_playwright() as p:
             browser, context, page = get_browser_context(p)
             _sl_status.update({"step":"scanning","message":"Fetching shortlisted profiles..."})
-            pids = get_shortlisted_ids(page)
+            pids = get_activity_ids(page, SHORTLISTED_URL, "shortlisted", _sl_status)
             _sl_status.update({"step":"scraping","total":len(pids),"message":f"Scraping {len(pids)} shortlisted profiles..."})
             raw_profiles = []
             for idx, pid in enumerate(pids):
@@ -612,7 +651,7 @@ def _run_activity_pipeline(status_ref, activity_url, activity_label, db_save_fn)
         with sync_playwright() as p:
             browser, context, page = get_browser_context(p)
             status_ref.update({"step":"scanning","message":f"Fetching {activity_label} profiles..."})
-            pids = get_activity_ids(page, activity_url, activity_label)
+            pids = get_activity_ids(page, activity_url, activity_label, status_ref)
             status_ref.update({"step":"scraping","total":len(pids),"message":f"Scraping {len(pids)} profiles..."})
             raw_profiles = []
             for idx, pid in enumerate(pids):
