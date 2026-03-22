@@ -24,6 +24,7 @@ MIN_SCORE       = 18
 BASE_URL        = "https://soubhagyalaxmi.com"
 LOGIN_URL       = "https://soubhagyalaxmi.com/login"
 SHORTLISTED_URL = "https://soubhagyalaxmi.com/user/ac-activity?type=shortlisted"
+SESSION_FILE    = "session.json"   # saved browser cookies/storage
 
 def build_search_url(agemin, agemax):
     return (
@@ -313,7 +314,16 @@ def score_breakdown(n1, r1, n2, r2):
 # ============================================================
 # SCRAPER — shared helpers
 # ============================================================
-def login(page):
+def is_logged_in(page):
+    """Check if the current page context is authenticated."""
+    try:
+        page.goto(BASE_URL + "/user/dashboard", wait_until="domcontentloaded", timeout=10000)
+        return "login" not in page.url.lower()
+    except:
+        return False
+
+def login_fresh(page, context):
+    """Do a full login and save session to disk."""
     page.goto(LOGIN_URL)
     page.wait_for_selector("input[type='text']")
     page.fill("input[type='text']", USERNAME)
@@ -322,7 +332,37 @@ def login(page):
     page.wait_for_timeout(3000)
     if "login" in page.url.lower():
         raise Exception("Login failed — check credentials")
-    print("✅ Logged in")
+    # Save session
+    context.storage_state(path=SESSION_FILE)
+    print("✅ Logged in and session saved")
+
+def get_browser_context(playwright_instance):
+    """
+    Returns a browser context.
+    If a saved session exists, loads it and checks if still valid.
+    Falls back to fresh login if session is expired.
+    """
+    browser = playwright_instance.chromium.launch(
+        headless=True,
+        args=["--no-sandbox", "--disable-setuid-sandbox"]
+    )
+    if os.path.exists(SESSION_FILE):
+        print("🔄 Loading saved session...")
+        context = browser.new_context(storage_state=SESSION_FILE)
+        page    = context.new_page()
+        if is_logged_in(page):
+            print("✅ Session valid — skipping login")
+            return browser, context, page
+        else:
+            print("⚠️  Session expired — logging in fresh")
+            page.close()
+            context.close()
+
+    # Fresh login
+    context = browser.new_context()
+    page    = context.new_page()
+    login_fresh(page, context)
+    return browser, context, page
 
 def get_total_pages(page, search_url):
     page.goto(search_url.format(1))
@@ -462,14 +502,12 @@ def run_matching(raw_profiles, status_ref):
 # PIPELINE — main search
 # ============================================================
 def _run_pipeline(agemin=33, agemax=39, months=12):
-    _status.update({"running":True,"step":"login","progress":0,"total":0,"message":"Starting up..."})
+    _status.update({"running":True,"step":"login","progress":0,"total":0,
+                    "message":"Checking session..." if os.path.exists(SESSION_FILE) else "Logging in..."})
     try:
         search_url = build_search_url(agemin, agemax)
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, args=["--no-sandbox","--disable-setuid-sandbox"])
-            page    = browser.new_page()
-            _status.update({"step":"login","message":"Logging into Soubhagya Laxmi..."})
-            login(page)
+            browser, context, page = get_browser_context(p)
             _status.update({"step":"counting","message":"Counting search result pages..."})
             total_pages  = get_total_pages(page, search_url)
             _status.update({"step":"scanning","message":f"Scanning {total_pages} pages..."})
@@ -502,13 +540,11 @@ def _run_pipeline(agemin=33, agemax=39, months=12):
 # PIPELINE — shortlisted
 # ============================================================
 def _run_shortlisted_pipeline():
-    _sl_status.update({"running":True,"step":"login","progress":0,"total":0,"message":"Starting..."})
+    _sl_status.update({"running":True,"step":"login","progress":0,"total":0,
+                       "message":"Checking session..." if os.path.exists(SESSION_FILE) else "Logging in..."})
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, args=["--no-sandbox","--disable-setuid-sandbox"])
-            page    = browser.new_page()
-            _sl_status.update({"step":"login","message":"Logging into Soubhagya Laxmi..."})
-            login(page)
+            browser, context, page = get_browser_context(p)
             _sl_status.update({"step":"scanning","message":"Fetching shortlisted profiles..."})
             pids = get_shortlisted_ids(page)
             _sl_status.update({"step":"scraping","total":len(pids),"message":f"Scraping {len(pids)} shortlisted profiles..."})
