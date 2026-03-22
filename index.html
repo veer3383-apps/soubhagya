@@ -65,6 +65,17 @@ const daysAgo = (s) => {
   return n===0?'Today':n===1?'Yesterday':n>0?`${n}d ago`:'Recently';
 };
 
+const getAge = (dob) => {
+  if (!dob) return null;
+  const d = new Date(dob);
+  if (isNaN(d)) return null;
+  const t = new Date();
+  let age = t.getFullYear() - d.getFullYear();
+  const m = t.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && t.getDate() < d.getDate())) age--;
+  return age;
+};
+
 // ── Pipeline steps ───────────────────────────────────────────
 const STEPS = [
   { key:'login',    icon:'login',    label:'Logging In'       },
@@ -478,7 +489,14 @@ function App() {
                         {(p.Cast||'N/A').split('-')[0].trim()}
                       </span>
                     </div>
-                    <h3 className="font-bold text-lg">{p.id}</h3>
+                    <h3 className="font-bold text-lg">
+                      {p.id}
+                      {getAge(p.DOB) && (
+                        <span className="ml-2 text-sm font-medium text-slate-300">
+                          {getAge(p.DOB)} yrs
+                        </span>
+                      )}
+                    </h3>
                   </div>
                   <div className="absolute top-3 right-3 bg-white px-2.5 py-1.5 rounded-xl flex flex-col items-center shadow">
                     <span className="text-[9px] font-bold text-slate-400 leading-none mb-0.5">MATCH</span>
