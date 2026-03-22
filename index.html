@@ -328,6 +328,13 @@ const Modal = ({ profile:p, onClose }) => {
 function App() {
   const [phase, setPhase]     = useState('init');
   const [info, setInfo]       = useState(null);
+  const [filters, setFilters] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('filters')) || { agemin: null, agemax: null, months: null };
+    } catch {
+      return { agemin: null, agemax: null, months: null };
+    }
+  });
   const [profiles, setProfiles] = useState([]);
   const [st, setSt]           = useState({running:false,message:'',step:'',progress:0,total:0});
   const [selected, setSelected] = useState(null);
@@ -343,6 +350,10 @@ function App() {
       .then(d=>{setInfo(d);setPhase('startup');})
       .catch(()=>setPhase('startup'));
   },[]);
+
+  useEffect(() => {
+    localStorage.setItem('filters', JSON.stringify(filters));
+  }, [filters]);
 
   const loadResults = useCallback(()=>
     fetch('/api/results').then(r=>r.json()).then(d=>setProfiles(Array.isArray(d)?d:[])), []);
@@ -363,10 +374,18 @@ function App() {
   },[loadResults]);
 
   const handleExisting = useCallback(async()=>{
-    await loadResults(); setPhase('ready');
+    await loadResults();
+    const saved = localStorage.getItem('filters');
+    if (saved) {
+      try {
+        setFilters(JSON.parse(saved));
+      } catch {}
+    }
+    setPhase('ready');
   },[loadResults]);
 
   const handleFresh = useCallback(async(params)=>{
+    setFilters(params);
     setPhase('running'); setError(null);
     await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(params)});
     clearInterval(pollRef.current);
@@ -407,6 +426,11 @@ function App() {
               <p className="text-slate-400 text-sm">
                 Matches for <strong className="text-slate-800">Sonali</strong>
                 {info?.last_run && <span className="ml-2">· Last run: {info.last_run}</span>}
+                {filters.agemin && filters.agemax && filters.months && (
+                  <span className="block mt-1">
+                    Filtered Matching people with age range : {filters.agemin} to {filters.agemax} who were last seen online within {filters.months} {filters.months === 1 ? 'month' : 'months'}
+                  </span>
+                )}
               </p>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
