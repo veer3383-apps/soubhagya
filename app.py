@@ -335,6 +335,24 @@ def extract_profile(page, profile_id):
     page.goto(url)
     page.wait_for_selector(".profileDetails")
     data = {"id": profile_id, "url": url}
+
+    # ✅ Extract profile image directly from page
+    try:
+        imgs = page.query_selector_all(".profilepic img")
+
+        for im in imgs:
+            src = im.get_attribute("src")
+            if src and not src.endswith("no-img.jpg") and "/no-img" not in src:
+                src = src.split("?")[0]
+                if src.startswith("/"):
+                    src = BASE_URL + src
+                data["image_thumb"] = src
+                data["image_full"]  = src
+                break
+    except:
+        pass
+
+    # Existing data extraction
     for table in page.query_selector_all(".profileDetails table"):
         for row in table.query_selector_all("tr"):
             cols = row.query_selector_all("td")
@@ -382,14 +400,20 @@ def match_profiles(raw_profiles):
             print(f"  ✅ {p['id']} — {score}/36")
 
             x = p.copy()
+
+            if not x.get("image_thumb"):
+                img = f"https://soubhagyalaxmi.com/upload/members/{p['id']}-thumb.jpg"
+                x["image_thumb"] = img
+                x["image_full"]  = img
+            else:
+                x["image_full"] = x["image_thumb"]
+
             x["matched_with"]          = "Sonali"
             x["match_score"]           = round(score, 1)
             x["compatibility_percent"] = round(score / 36 * 100, 1)
             x["score_breakdown"]       = bd
             x["nadi_dosha"]            = (nadi(sn, n) == 0)
             x["bhakoot_dosha"]         = (bhakoot(sr, r) == 0)
-            x["image_thumb"]           = f"https://soubhagyalaxmi.com/upload/members/{p['id']}-thumb.jpg"
-            x["image_full"]            = f"https://soubhagyalaxmi.com/upload/members/{p['id']}-full.jpg"
             out.append(x)
 
         except Exception as e:
