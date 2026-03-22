@@ -13,6 +13,8 @@
     * { font-family: 'Inter', sans-serif; }
     .spin { animation: spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .sidebar { transition: transform 0.3s ease; }
+    .sidebar-overlay { transition: opacity 0.3s ease; }
   </style>
 </head>
 <body class="bg-slate-50">
@@ -20,7 +22,7 @@
 <script type="text/babel">
 const { useState, useMemo, useEffect, useCallback, useRef } = React;
 
-// ── Tiny SVG icon system ─────────────────────────────────────
+// ── Icons ────────────────────────────────────────────────────
 const ICONS = {
   user:      "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
   mapPin:    "M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z M12 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2z",
@@ -48,6 +50,11 @@ const ICONS = {
   scan:      "M3 7V5a2 2 0 0 1 2-2h2 M17 3h2a2 2 0 0 1 2 2v2 M21 17v2a2 2 0 0 1-2 2h-2 M7 21H5a2 2 0 0 1-2-2v-2 M8 12h8",
   download:  "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3",
   cpu:       "M18 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z M9 9h6v6H9z M9 1v3 M15 1v3 M9 20v3 M15 20v3 M20 9h3 M20 14h3 M1 9h3 M1 14h3",
+  menu:      "M3 12h18 M3 6h18 M3 18h18",
+  x:         "M18 6L6 18 M6 6l12 12",
+  bookmark:  "M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z",
+  list:      "M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01",
+  sync:      "M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2",
 };
 const Ic = ({ n, size=16, cls='' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -59,28 +66,14 @@ const Ic = ({ n, size=16, cls='' }) => (
 // ── Helpers ──────────────────────────────────────────────────
 const daysAgo = (s) => {
   if (!s) return 'N/A';
-
-  const d = new Date(s);
-  const t = new Date();
-
-  d.setHours(0,0,0,0);
-  t.setHours(0,0,0,0);
-
+  const d = new Date(s), t = new Date();
+  d.setHours(0,0,0,0); t.setHours(0,0,0,0);
   const days = Math.floor((t - d) / 86400000);
-
   if (days === 0) return 'Today';
   if (days === 1) return 'Yesterday';
-
-  if (days < 30) return `${days}d ago`;
-
-  const months = Math.floor(days / 30);
-  const remDays = days % 30;
-
-  if (remDays === 0) {
-    return `${months} ${months === 1 ? 'month' : 'months'} ago`;
-  }
-
-  return `${months} ${months === 1 ? 'month' : 'months'}, ${remDays}d ago`;
+  if (days < 30)  return `${days}d ago`;
+  const months = Math.floor(days / 30), rem = days % 30;
+  return rem === 0 ? `${months}mo ago` : `${months}mo ${rem}d ago`;
 };
 
 const getAge = (dob) => {
@@ -103,9 +96,16 @@ const STEPS = [
   { key:'matching', icon:'cpu',      label:'Ashtakoot Match'  },
 ];
 
+const SL_STEPS = [
+  { key:'login',    icon:'login',    label:'Logging In'         },
+  { key:'scanning', icon:'bookmark', label:'Getting Shortlisted'},
+  { key:'scraping', icon:'download', label:'Fetching Details'   },
+  { key:'matching', icon:'cpu',      label:'Ashtakoot Match'    },
+];
+
 // ── Progress overlay ─────────────────────────────────────────
-const ProgressOverlay = ({ st }) => {
-  const si  = STEPS.findIndex(s => s.key === st.step);
+const ProgressOverlay = ({ st, steps, title }) => {
+  const si  = steps.findIndex(s => s.key === st.step);
   const pct = st.total > 0 ? Math.round(st.progress/st.total*100) : 0;
   const hasBar = ['scanning','scraping','matching'].includes(st.step);
   return (
@@ -117,12 +117,12 @@ const ProgressOverlay = ({ st }) => {
             <Ic n="loader" size={20} cls="spin"/>
           </div>
           <div>
-            <h2 className="font-bold text-lg">Pipeline Running</h2>
+            <h2 className="font-bold text-lg">{title || 'Pipeline Running'}</h2>
             <p className="text-slate-400 text-sm">Please wait — this takes a few minutes</p>
           </div>
         </div>
         <div className="space-y-2 mb-8">
-          {STEPS.map((s, i) => {
+          {steps.map((s, i) => {
             const done=i<si, cur=i===si, pend=i>si;
             return (
               <div key={s.key} className={`flex items-center gap-3 p-3 rounded-xl
@@ -176,8 +176,6 @@ const StartupDialog = ({ info, onExisting, onFresh }) => {
           <p className="text-pink-100 text-sm">Ashtakoot Matchmaking for Sonali</p>
         </div>
         <div className="p-6 space-y-4">
-
-          {/* Existing results */}
           {info?.exists && (
             <div className="p-4 bg-green-50 border border-green-200 rounded-2xl">
               <div className="flex items-center gap-2 mb-1 text-green-700">
@@ -190,28 +188,22 @@ const StartupDialog = ({ info, onExisting, onFresh }) => {
               </button>
             </div>
           )}
-
-          {/* Age range */}
           <div className="bg-slate-50 rounded-2xl p-4">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Age Range</p>
             <div className="flex items-center gap-3">
               <div className="flex-1">
                 <p className="text-xs text-slate-400 mb-1">Min</p>
-                <input type="number" min={18} max={70} value={ageMin}
-                  onChange={e=>setAgeMin(+e.target.value)}
+                <input type="number" min={18} max={70} value={ageMin} onChange={e=>setAgeMin(+e.target.value)}
                   className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-pink-400"/>
               </div>
               <span className="text-slate-300 font-bold mt-5">—</span>
               <div className="flex-1">
                 <p className="text-xs text-slate-400 mb-1">Max</p>
-                <input type="number" min={18} max={70} value={ageMax}
-                  onChange={e=>setAgeMax(+e.target.value)}
+                <input type="number" min={18} max={70} value={ageMax} onChange={e=>setAgeMax(+e.target.value)}
                   className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-pink-400"/>
               </div>
             </div>
           </div>
-
-          {/* Activity */}
           <div className="bg-slate-50 rounded-2xl p-4">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Profile Activity</p>
             <p className="text-xs text-slate-400 mb-3">Only include profiles active within:</p>
@@ -226,7 +218,6 @@ const StartupDialog = ({ info, onExisting, onFresh }) => {
               ))}
             </div>
           </div>
-
           <button onClick={()=>onFresh({agemin:ageMin,agemax:ageMax,months})}
             className="w-full flex items-center justify-center gap-2 py-3.5 text-white rounded-2xl font-bold transition-colors"
             style={{background:'#db2777'}}>
@@ -259,17 +250,10 @@ const Modal = ({ profile:p, onClose }) => {
       style={{backdropFilter:'blur(4px)'}} onClick={onClose}>
       <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col md:flex-row"
         onClick={e=>e.stopPropagation()}>
-
-        {/* Left */}
         <div className="md:w-1/3 bg-slate-50 p-6 border-r flex flex-col items-center overflow-y-auto">
           <div className="relative mb-6">
             <img src={p.image_thumb || p.image_full} alt={p.id}
-              onError={e => {
-                if (!e.target.dataset.fallback) {
-                  e.target.dataset.fallback = "1";
-                  e.target.src = `https://ui-avatars.com/api/?name=${p.id}&size=400&background=db2777&color=fff&bold=true`;
-                }
-              }}
+              onError={e=>{if(!e.target.dataset.fallback){e.target.dataset.fallback="1";e.target.src=`https://ui-avatars.com/api/?name=${p.id}&size=400&background=db2777&color=fff&bold=true`;}}}
               className="w-44 h-44 rounded-2xl object-cover shadow-lg border-4 border-white"/>
             <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 text-white px-4 py-1 rounded-full text-sm font-bold whitespace-nowrap shadow"
               style={{background:'#db2777'}}>Rank #{p.rank}</div>
@@ -277,10 +261,8 @@ const Modal = ({ profile:p, onClose }) => {
           <h2 className="text-xl font-bold mt-2 mb-1">{p.id}</h2>
           <p className="text-slate-400 text-center text-sm mb-5">{p.Profession||'N/A'}</p>
           <div className="w-full space-y-2.5 text-sm">
-            {[['heart','pink',`${p.compatibility_percent}% Match`],
-              ['dollar','blue',p["Monthly income"]||'N/A'],
-              ['users','purple',p.Cast||'N/A'],
-              ['clock','orange',`Active ${daysAgo(p.last_seen)}`]].map(([ic,c,t])=>(
+            {[['heart','pink',`${p.compatibility_percent}% Match`],['dollar','blue',p["Monthly income"]||'N/A'],
+              ['users','purple',p.Cast||'N/A'],['clock','orange',`Active ${daysAgo(p.last_seen)}`]].map(([ic,c,t])=>(
               <div key={t} className="flex items-center gap-2.5">
                 <div className={`p-1.5 rounded-lg bg-${c}-100 text-${c}-600`}><Ic n={ic} size={14}/></div>
                 <span className="text-slate-600">{t}</span>
@@ -288,21 +270,18 @@ const Modal = ({ profile:p, onClose }) => {
             ))}
           </div>
           <a href={p.url} target="_blank" rel="noopener noreferrer"
-            className="mt-6 w-full flex items-center justify-center gap-2 py-2.5 text-white rounded-xl text-sm font-medium transition-colors"
+            className="mt-6 w-full flex items-center justify-center gap-2 py-2.5 text-white rounded-xl text-sm font-medium"
             style={{background:'#db2777'}}>
             View Profile <Ic n="external" size={14}/>
           </a>
         </div>
-
-        {/* Right */}
         <div className="md:w-2/3 p-6 md:p-8 overflow-y-auto">
           <div className="flex justify-between items-start mb-6">
             <div>
               <h3 className="text-lg font-bold mb-0.5">Compatibility Breakdown</h3>
               <p className="text-slate-400 text-sm">Ashtakoot Guna — {p.match_score}/36</p>
             </div>
-            <button onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded-full text-slate-400 text-xl">✕</button>
+            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded-full text-slate-400 text-xl">✕</button>
           </div>
           <div className="grid grid-cols-2 gap-x-8 mb-8">
             {Object.entries(p.score_breakdown||{}).map(([k,v])=>{
@@ -312,11 +291,8 @@ const Modal = ({ profile:p, onClose }) => {
           </div>
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-2.5">
-              <h4 className="font-bold text-sm flex items-center gap-1.5 border-b pb-2 text-slate-700">
-                <Ic n="info" size={13}/> Personal
-              </h4>
-              {[['Born',p.DOB],['Religion',p.Religion],['Education',p["Education Detail"]],
-                ['Height',p.Height],['Blood Group',p.BloodGroup]].filter(([,v])=>v).map(([k,v])=>(
+              <h4 className="font-bold text-sm flex items-center gap-1.5 border-b pb-2 text-slate-700"><Ic n="info" size={13}/> Personal</h4>
+              {[['Born',p.DOB],['Religion',p.Religion],['Education',p["Education Detail"]],['Height',p.Height],['Blood Group',p.BloodGroup]].filter(([,v])=>v).map(([k,v])=>(
                 <div key={k} className="flex justify-between text-sm">
                   <span className="text-slate-400">{k}</span>
                   <span className="font-medium text-right max-w-[150px] truncate">{v}</span>
@@ -324,9 +300,7 @@ const Modal = ({ profile:p, onClose }) => {
               ))}
             </div>
             <div className="space-y-2.5">
-              <h4 className="font-bold text-sm flex items-center gap-1.5 border-b pb-2 text-slate-700">
-                <Ic n="star" size={13}/> Astrology
-              </h4>
+              <h4 className="font-bold text-sm flex items-center gap-1.5 border-b pb-2 text-slate-700"><Ic n="star" size={13}/> Astrology</h4>
               {[['Rashi',p.Rashi],['Birth Time',p["Birth Time"]],['Birth Place',p["Birth Place"]]].filter(([,v])=>v).map(([k,v])=>(
                 <div key={k} className="flex justify-between text-sm">
                   <span className="text-slate-400">{k}</span>
@@ -347,39 +321,178 @@ const Modal = ({ profile:p, onClose }) => {
   );
 };
 
+// ── Profile card ─────────────────────────────────────────────
+const ProfileCard = ({ p, onOpen }) => (
+  <div onClick={()=>onOpen(p)}
+    className="group bg-white rounded-3xl overflow-hidden border border-slate-100 cursor-pointer flex flex-col"
+    style={{transition:'all .3s',boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}
+    onMouseEnter={e=>{e.currentTarget.style.boxShadow='0 20px 40px rgba(0,0,0,0.12)';e.currentTarget.style.transform='translateY(-6px)';}}
+    onMouseLeave={e=>{e.currentTarget.style.boxShadow='0 1px 3px rgba(0,0,0,0.06)';e.currentTarget.style.transform='';}}>
+    <div className="h-60 relative overflow-hidden shrink-0">
+      <img src={p.image_thumb||p.image_full} alt={p.id}
+        onError={e=>{if(!e.target.dataset.fallback){e.target.dataset.fallback="1";e.target.src=`https://ui-avatars.com/api/?name=${p.id}&size=400&background=db2777&color=fff&bold=true`;}}}
+        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"/>
+      <div className="absolute inset-0" style={{background:'linear-gradient(to top,rgba(0,0,0,.8),rgba(0,0,0,.1),transparent)'}}/>
+      <div className="absolute bottom-3 left-4 right-4 text-white">
+        <div className="flex gap-1.5 mb-1">
+          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold" style={{background:'#db2777'}}>#{p.rank}</span>
+          <span className="bg-white/20 px-2 py-0.5 rounded-md text-[10px] font-bold truncate max-w-[110px]">
+            {(p.Cast||'N/A').split('-')[0].trim()}
+          </span>
+        </div>
+        <h3 className="font-bold text-lg">
+          {p.id}
+          {getAge(p.DOB) && <span className="ml-2 text-sm font-medium text-slate-300">{getAge(p.DOB)} yrs</span>}
+        </h3>
+      </div>
+      <div className="absolute top-3 right-3 bg-white px-2.5 py-1.5 rounded-xl flex flex-col items-center shadow">
+        <span className="text-[9px] font-bold text-slate-400 leading-none mb-0.5">MATCH</span>
+        <span className="text-base font-black leading-none" style={{color:'#f43f5e'}}>{p.compatibility_percent}%</span>
+      </div>
+    </div>
+    <div className="p-4 flex-1 flex flex-col">
+      <div className="space-y-2 mb-3 flex-1 text-slate-500 text-sm">
+        {[[<Ic n="briefcase" size={13}/>,p.Profession||'Not listed'],
+          [<Ic n="mapPin" size={13}/>,`${p.City||'?'}, GOA`],
+          [<Ic n="grad" size={13}/>,p.Education||'Not listed']].map(([ic,t],i)=>(
+          <div key={i} className="flex items-center gap-2">
+            <span className="text-slate-300 shrink-0">{ic}</span>
+            <span className="truncate">{t}</span>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-50 px-2.5 py-1.5 rounded-lg mb-3">
+        <Ic n="clock" size={11} cls="text-orange-400"/> Active: {daysAgo(p.last_seen)}
+      </div>
+      <div className="flex items-center justify-between border-t pt-3">
+        <div>
+          <div className="text-xs text-slate-400">Income</div>
+          <div className="font-bold text-sm truncate max-w-[120px]">{p["Monthly income"]||'N/A'}</div>
+        </div>
+        <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-pink-500 group-hover:text-white transition-all">
+          <Ic n="chevron" size={15}/>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+// ── Sidebar ───────────────────────────────────────────────────
+const Sidebar = ({ isOpen, onClose, view, setView, slCount, slStatus, onRunShortlisted }) => (
+  <>
+    {/* Overlay */}
+    {isOpen && (
+      <div className="fixed inset-0 z-30 bg-black/40 sidebar-overlay"
+        style={{backdropFilter:'blur(2px)'}} onClick={onClose}/>
+    )}
+    {/* Drawer */}
+    <div className={`fixed top-0 left-0 h-full w-72 bg-white z-40 shadow-2xl sidebar flex flex-col`}
+      style={{transform: isOpen ? 'translateX(0)' : 'translateX(-100%)'}}>
+
+      {/* Header */}
+      <div className="p-6 text-white" style={{background:'linear-gradient(135deg,#db2777,#f43f5e)'}}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Ic n="heart" size={20} cls="shrink-0"/>
+            <span className="font-black text-lg">Soubhagya</span>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center bg-white/20 hover:bg-white/30 rounded-lg transition-colors">
+            <Ic n="x" size={16}/>
+          </button>
+        </div>
+        <p className="text-pink-100 text-xs">Matchmaking for Sonali</p>
+      </div>
+
+      {/* Nav */}
+      <nav className="flex-1 p-4 space-y-1">
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider px-3 mb-3">Views</p>
+
+        <button onClick={()=>{setView('matches');onClose();}}
+          className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition-all
+            ${view==='matches'?'text-white':'text-slate-600 hover:bg-slate-50'}`}
+          style={view==='matches'?{background:'#db2777'}:{}}>
+          <Ic n="list" size={17}/>
+          <span>All Matches</span>
+        </button>
+
+        <button onClick={()=>{setView('shortlisted');onClose();}}
+          className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition-all
+            ${view==='shortlisted'?'text-white':'text-slate-600 hover:bg-slate-50'}`}
+          style={view==='shortlisted'?{background:'#db2777'}:{}}>
+          <Ic n="bookmark" size={17}/>
+          <span className="flex-1 text-left">Shortlisted</span>
+          {slCount > 0 && (
+            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${view==='shortlisted'?'bg-white/20 text-white':'bg-pink-100 text-pink-600'}`}>
+              {slCount}
+            </span>
+          )}
+        </button>
+      </nav>
+
+      {/* Shortlisted sync button */}
+      <div className="p-4 border-t border-slate-100">
+        <p className="text-xs text-slate-400 mb-2 px-1">
+          {slStatus?.last_run ? `Last synced: ${slStatus.last_run}` : 'Never synced'}
+        </p>
+        <button onClick={onRunShortlisted} disabled={slStatus?.running}
+          className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-colors
+            ${slStatus?.running?'bg-slate-100 text-slate-400':'bg-slate-900 hover:bg-slate-700 text-white'}`}>
+          {slStatus?.running
+            ? <><Ic n="loader" size={14} cls="spin"/> Syncing...</>
+            : <><Ic n="sync" size={14}/> Sync Shortlisted</>}
+        </button>
+        {slStatus?.running && (
+          <p className="text-xs text-pink-600 text-center mt-2 truncate">{slStatus.message}</p>
+        )}
+      </div>
+    </div>
+  </>
+);
+
 // ── Main App ─────────────────────────────────────────────────
 function App() {
   const [phase, setPhase]     = useState('init');
   const [info, setInfo]       = useState(null);
   const [filters, setFilters] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('filters')) || { agemin: null, agemax: null, months: null };
-    } catch {
-      return { agemin: null, agemax: null, months: null };
-    }
+    try { return JSON.parse(localStorage.getItem('filters')) || {agemin:null,agemax:null,months:null}; }
+    catch { return {agemin:null,agemax:null,months:null}; }
   });
-  const [profiles, setProfiles] = useState([]);
-  const [st, setSt]           = useState({running:false,message:'',step:'',progress:0,total:0});
-  const [selected, setSelected] = useState(null);
-  const [search, setSearch]   = useState('');
-  const [cast, setCast]       = useState('All');
-  const [city, setCity]       = useState('All');
-  const [sort, setSort]       = useState('rankAsc');
-  const [error, setError]     = useState(null);
-  const pollRef = useRef(null);
 
+  // All matches
+  const [profiles, setProfiles] = useState([]);
+  const [st, setSt]             = useState({running:false,message:'',step:'',progress:0,total:0});
+
+  // Shortlisted
+  const [view, setView]           = useState('matches');
+  const [slProfiles, setSlProfiles] = useState([]);
+  const [slSt, setSlSt]           = useState({running:false,message:'idle',step:'',progress:0,total:0,last_run:null,result_count:0});
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Shared
+  const [selected, setSelected] = useState(null);
+  const [search, setSearch]     = useState('');
+  const [cast, setCast]         = useState('All');
+  const [city, setCity]         = useState('All');
+  const [sort, setSort]         = useState('rankAsc');
+  const [error, setError]       = useState(null);
+  const pollRef   = useRef(null);
+  const slPollRef = useRef(null);
+
+  // Init
   useEffect(()=>{
     fetch('/api/has_results').then(r=>r.json())
       .then(d=>{setInfo(d);setPhase('startup');})
       .catch(()=>setPhase('startup'));
+    // Load shortlisted status
+    fetch('/api/shortlisted_status').then(r=>r.json()).then(setSlSt).catch(()=>{});
   },[]);
 
-  useEffect(() => {
+  useEffect(()=>{
     localStorage.setItem('filters', JSON.stringify(filters));
-  }, [filters]);
+  },[filters]);
 
-  const loadResults = useCallback(()=>
-    fetch('/api/results').then(r=>r.json()).then(d=>setProfiles(Array.isArray(d)?d:[])), []);
+  const loadResults    = useCallback(()=>fetch('/api/results').then(r=>r.json()).then(d=>setProfiles(Array.isArray(d)?d:[])), []);
+  const loadShortlisted = useCallback(()=>fetch('/api/shortlisted').then(r=>r.json()).then(d=>setSlProfiles(Array.isArray(d)?d:[])), []);
 
   const pollStatus = useCallback(async()=>{
     const d = await fetch('/api/status').then(r=>r.json());
@@ -396,66 +509,113 @@ function App() {
     }
   },[loadResults]);
 
+  const pollSlStatus = useCallback(async()=>{
+    const d = await fetch('/api/shortlisted_status').then(r=>r.json());
+    setSlSt(d);
+    if(!d.running && d.step==='done'){
+      clearInterval(slPollRef.current);
+      await loadShortlisted();
+    }
+    if(!d.running && d.step==='error'){
+      clearInterval(slPollRef.current);
+    }
+  },[loadShortlisted]);
+
   const handleExisting = useCallback(async()=>{
     await loadResults();
-    const saved = localStorage.getItem('filters');
-    if (saved) {
-      try {
-        setFilters(JSON.parse(saved));
-      } catch {}
-    }
+    await loadShortlisted();
+    try{ const s=localStorage.getItem('filters'); if(s) setFilters(JSON.parse(s)); }catch{}
     setPhase('ready');
-  },[loadResults]);
+  },[loadResults, loadShortlisted]);
 
   const handleFresh = useCallback(async(params)=>{
-    setFilters(params);
-    setPhase('running'); setError(null);
+    setFilters(params); setPhase('running'); setError(null);
     await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(params)});
     clearInterval(pollRef.current);
     pollRef.current = setInterval(pollStatus,1500);
   },[pollStatus]);
 
-  useEffect(()=>()=>clearInterval(pollRef.current),[]);
+  const handleRunShortlisted = useCallback(async()=>{
+    await fetch('/api/run_shortlisted',{method:'POST'});
+    clearInterval(slPollRef.current);
+    slPollRef.current = setInterval(pollSlStatus,1500);
+    setSidebarOpen(false);
+  },[pollSlStatus]);
 
-  const casts  = useMemo(()=>['All',...new Set(profiles.map(p=>p.Cast).filter(Boolean))].sort(),[profiles]);
-  const cities = useMemo(()=>['All',...new Set(profiles.map(p=>p.City).filter(Boolean))].sort(),[profiles]);
-  const topPct = useMemo(()=>profiles.length?Math.max(...profiles.map(p=>p.compatibility_percent||0)):0,[profiles]);
-  const avg    = useMemo(()=>profiles.length?(profiles.reduce((s,p)=>s+(p.match_score||0),0)/profiles.length).toFixed(1):0,[profiles]);
+  useEffect(()=>()=>{clearInterval(pollRef.current);clearInterval(slPollRef.current);},[]);
+
+  // Active profiles based on view
+  const activeProfiles = view==='matches' ? profiles : slProfiles;
+
+  const casts  = useMemo(()=>['All',...new Set(activeProfiles.map(p=>p.Cast).filter(Boolean))].sort(),[activeProfiles]);
+  const cities = useMemo(()=>['All',...new Set(activeProfiles.map(p=>p.City).filter(Boolean))].sort(),[activeProfiles]);
+  const topPct = useMemo(()=>activeProfiles.length?Math.max(...activeProfiles.map(p=>p.compatibility_percent||0)):0,[activeProfiles]);
+  const avg    = useMemo(()=>activeProfiles.length?(activeProfiles.reduce((s,p)=>s+(p.match_score||0),0)/activeProfiles.length).toFixed(1):0,[activeProfiles]);
 
   const filtered = useMemo(()=>{
     const q=search.toLowerCase();
-    return profiles
+    return activeProfiles
       .filter(p=>(!q||(p.id||'').toLowerCase().includes(q)||(p.Profession||'').toLowerCase().includes(q))
         &&(cast==='All'||p.Cast===cast)&&(city==='All'||p.City===city))
       .sort((a,b)=>sort==='scoreDesc'?(b.match_score||0)-(a.match_score||0)
         :sort==='lastSeenDesc'?new Date(b.last_seen||0)-new Date(a.last_seen||0)
         :(a.rank||999)-(b.rank||999));
-  },[profiles,search,cast,city,sort]);
+  },[activeProfiles,search,cast,city,sort]);
+
+  const showProgress = phase==='running';
+  const showSlProgress = slSt.running;
 
   return (
     <div className="min-h-screen bg-slate-50">
       {phase==='startup' && <StartupDialog info={info} onExisting={handleExisting} onFresh={handleFresh}/>}
-      {phase==='running' && <ProgressOverlay st={st}/>}
+      {showProgress && <ProgressOverlay st={st} steps={STEPS} title="Running Main Pipeline"/>}
+      {showSlProgress && !showProgress && <ProgressOverlay st={slSt} steps={SL_STEPS} title="Syncing Shortlisted"/>}
+
+      <Sidebar
+        isOpen={sidebarOpen}
+        onClose={()=>setSidebarOpen(false)}
+        view={view}
+        setView={(v)=>{setView(v); setSearch(''); setCast('All'); setCity('All');}}
+        slCount={slProfiles.length}
+        slStatus={slSt}
+        onRunShortlisted={handleRunShortlisted}
+      />
 
       <div className="p-4 md:p-8">
         {/* Header */}
         <header className="max-w-7xl mx-auto mb-8">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-            <div>
-              <h1 className="text-4xl md:text-5xl font-black mb-2"
-                style={{background:'linear-gradient(to right,#db2777,#fb7185)',WebkitBackgroundClip:'text',backgroundClip:'text',color:'transparent'}}>
-                Potential Soulmates
-              </h1>
-              <p className="text-slate-400 text-sm">
-                Matches for <strong className="text-slate-800">Sonali</strong>
-                {info?.last_run && <span className="ml-2">· Last run: {info.last_run}</span>}
-                {filters.agemin && filters.agemax && filters.months && (
-                  <span className="block mt-1">
-                    Filtered Matching people with age range : {filters.agemin} to {filters.agemax} who were last seen online within {filters.months} {filters.months === 1 ? 'month' : 'months'}
-                  </span>
-                )}
-              </p>
+            <div className="flex items-start gap-4">
+              {/* Hamburger */}
+              <button onClick={()=>setSidebarOpen(true)}
+                className="mt-1 w-10 h-10 flex items-center justify-center bg-white border border-slate-200 rounded-xl shadow-sm hover:border-pink-300 transition-colors shrink-0">
+                <Ic n="menu" size={18} cls="text-slate-600"/>
+              </button>
+              <div>
+                <div className="flex items-center gap-3 mb-1">
+                  <h1 className="text-4xl md:text-5xl font-black"
+                    style={{background:'linear-gradient(to right,#db2777,#fb7185)',WebkitBackgroundClip:'text',backgroundClip:'text',color:'transparent'}}>
+                    {view==='matches' ? 'Potential Soulmates' : 'Shortlisted'}
+                  </h1>
+                  {view==='shortlisted' && (
+                    <span className="text-xs font-bold px-3 py-1 rounded-full text-white mt-2" style={{background:'#db2777'}}>
+                      ★ SHORTLISTED
+                    </span>
+                  )}
+                </div>
+                <p className="text-slate-400 text-sm">
+                  Matches for <strong className="text-slate-800">Sonali</strong>
+                  {view==='matches' && info?.last_run && <span className="ml-2">· Last run: {info.last_run}</span>}
+                  {view==='shortlisted' && slSt?.last_run && <span className="ml-2">· Synced: {slSt.last_run}</span>}
+                  {view==='matches' && filters.agemin && filters.agemax && filters.months && (
+                    <span className="block mt-1">
+                      Age {filters.agemin}–{filters.agemax} · Active within {filters.months} {filters.months===1?'month':'months'}
+                    </span>
+                  )}
+                </p>
+              </div>
             </div>
+
             <div className="flex items-center gap-3 flex-wrap">
               {[['Top Match',`${topPct}%`,'#22c55e'],['Avg Score',avg,'#fb7185'],['Shown',filtered.length,'#60a5fa']].map(([l,v,c])=>(
                 <div key={l} className="bg-white px-5 py-3 rounded-2xl shadow-sm border border-slate-100">
@@ -476,7 +636,7 @@ function App() {
         </header>
 
         {/* Controls */}
-        <section className="max-w-7xl mx-auto mb-8 sticky top-4 z-40">
+        <section className="max-w-7xl mx-auto mb-8 sticky top-4 z-20">
           <div className="bg-white/90 p-3 rounded-2xl shadow-lg border border-slate-100 flex flex-col lg:flex-row gap-3 items-center"
             style={{backdropFilter:'blur(8px)'}}>
             <div className="w-full lg:flex-1 relative">
@@ -487,9 +647,9 @@ function App() {
             </div>
             <div className="flex flex-wrap gap-2 w-full lg:w-auto">
               {[
-                {ic:'filter',  val:cast, set:setCast, opts:casts},
-                {ic:'mapPin',  val:city, set:setCity, opts:['All',...cities.filter(c=>c!=='All')]},
-                {ic:'sort',    val:sort, set:setSort, opts:[['rankAsc','Best Match'],['scoreDesc','Highest Score'],['lastSeenDesc','Recently Active']]},
+                {ic:'filter', val:cast, set:setCast, opts:casts},
+                {ic:'mapPin', val:city, set:setCity, opts:['All',...cities.filter(c=>c!=='All')]},
+                {ic:'sort',   val:sort, set:setSort, opts:[['rankAsc','Best Match'],['scoreDesc','Highest Score'],['lastSeenDesc','Recently Active']]},
               ].map(({ic,val,set,opts},i)=>(
                 <div key={i} className="flex-1 lg:flex-none flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-xl px-3 focus-within:ring-2 focus-within:ring-pink-400">
                   <span className="text-slate-400 shrink-0"><Ic n={ic} size={13}/></span>
@@ -503,8 +663,23 @@ function App() {
           </div>
         </section>
 
-        {/* Empty state */}
-        {phase==='ready' && profiles.length===0 && (
+        {/* Shortlisted empty — never synced */}
+        {view==='shortlisted' && slProfiles.length===0 && !slSt.running && (
+          <div className="max-w-7xl mx-auto py-20 text-center">
+            <div className="w-20 h-20 bg-pink-50 rounded-full flex items-center justify-center mx-auto mb-4 text-pink-400">
+              <Ic n="bookmark" size={32}/>
+            </div>
+            <h2 className="text-2xl font-bold mb-2">No shortlisted data yet</h2>
+            <p className="text-slate-400 mb-6">Open the sidebar and click <strong>Sync Shortlisted</strong> to fetch profiles you've shortlisted on the site.</p>
+            <button onClick={()=>setSidebarOpen(true)}
+              className="inline-flex items-center gap-2 px-6 py-3 text-white rounded-2xl font-bold" style={{background:'#db2777'}}>
+              <Ic n="menu" size={16}/> Open Sidebar
+            </button>
+          </div>
+        )}
+
+        {/* All matches empty */}
+        {view==='matches' && phase==='ready' && profiles.length===0 && (
           <div className="max-w-7xl mx-auto py-20 text-center">
             <div className="w-20 h-20 bg-pink-50 rounded-full flex items-center justify-center mx-auto mb-4 text-pink-400">
               <Ic n="play" size={32}/>
@@ -517,78 +692,11 @@ function App() {
         {/* Grid */}
         {filtered.length > 0 && (
           <main className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-            {filtered.map(p=>(
-              <div key={p.id} onClick={()=>setSelected(p)}
-                className="group bg-white rounded-3xl overflow-hidden border border-slate-100 cursor-pointer flex flex-col"
-                style={{transition:'all .3s',boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}
-                onMouseEnter={e=>{e.currentTarget.style.boxShadow='0 20px 40px rgba(0,0,0,0.12)';e.currentTarget.style.transform='translateY(-6px)';}}
-                onMouseLeave={e=>{e.currentTarget.style.boxShadow='0 1px 3px rgba(0,0,0,0.06)';e.currentTarget.style.transform='';}}>
-
-                <div className="h-60 relative overflow-hidden shrink-0">
-                  <img src={p.image_thumb || p.image_full} alt={p.id}
-                    onError={e => {
-                      if (!e.target.dataset.fallback) {
-                        e.target.dataset.fallback = "1";
-                        e.target.src = `https://ui-avatars.com/api/?name=${p.id}&size=400&background=db2777&color=fff&bold=true`;
-                      }
-                    }}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"/>
-                  <div className="absolute inset-0" style={{background:'linear-gradient(to top,rgba(0,0,0,.8),rgba(0,0,0,.1),transparent)'}}/>
-                  <div className="absolute bottom-3 left-4 right-4 text-white">
-                    <div className="flex gap-1.5 mb-1">
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold" style={{background:'#db2777'}}>#{p.rank}</span>
-                      <span className="bg-white/20 px-2 py-0.5 rounded-md text-[10px] font-bold truncate max-w-[110px]">
-                        {(p.Cast||'N/A').split('-')[0].trim()}
-                      </span>
-                    </div>
-                    <h3 className="font-bold text-lg">
-                      {p.id}
-                      {getAge(p.DOB) && (
-                        <span className="ml-2 text-sm font-medium text-slate-300">
-                          {getAge(p.DOB)} yrs
-                        </span>
-                      )}
-                    </h3>
-                  </div>
-                  <div className="absolute top-3 right-3 bg-white px-2.5 py-1.5 rounded-xl flex flex-col items-center shadow">
-                    <span className="text-[9px] font-bold text-slate-400 leading-none mb-0.5">MATCH</span>
-                    <span className="text-base font-black leading-none" style={{color:'#f43f5e'}}>{p.compatibility_percent}%</span>
-                  </div>
-                </div>
-
-                <div className="p-4 flex-1 flex flex-col">
-                  <div className="space-y-2 mb-3 flex-1 text-slate-500 text-sm">
-                    {[[<Ic n="briefcase" size={13}/>,p.Profession||'Not listed'],
-                      [<Ic n="mapPin" size={13}/>,`${p.City||'?'}, GOA`],
-                      [<Ic n="grad" size={13}/>,p.Education||'Not listed']].map(([ic,t],i)=>(
-                      <div key={i} className="flex items-center gap-2">
-                        <span className="text-slate-300 shrink-0">{ic}</span>
-                        <span className="truncate">{t}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-50 px-2.5 py-1.5 rounded-lg mb-3">
-                    <Ic n="clock" size={11} cls="text-orange-400"/> Active: {daysAgo(p.last_seen)}
-                  </div>
-                  <div className="flex items-center justify-between border-t pt-3">
-                    <div>
-                      <div className="text-xs text-slate-400">Income</div>
-                      <div className="font-bold text-sm truncate max-w-[120px]">{p["Monthly income"]||'N/A'}</div>
-                    </div>
-                    <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-400
-                      group-hover:text-white transition-all"
-                      style={{}}
-                      ref={el=>{if(el){el.style.background=el.closest('.group')&&el.closest('.group').matches(':hover')?'#db2777':'';}}}>
-                      <Ic n="chevron" size={15}/>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
+            {filtered.map(p=><ProfileCard key={p.id} p={p} onOpen={setSelected}/>)}
           </main>
         )}
 
-        {profiles.length>0 && filtered.length===0 && (
+        {activeProfiles.length>0 && filtered.length===0 && (
           <div className="max-w-7xl mx-auto py-20 text-center">
             <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
               <Ic n="search" size={26}/>
