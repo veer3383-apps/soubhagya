@@ -23,8 +23,10 @@ SONALI_TIME     = "19:10"
 MIN_SCORE       = 18
 BASE_URL        = "https://soubhagyalaxmi.com"
 LOGIN_URL       = "https://soubhagyalaxmi.com/login"
-SHORTLISTED_URL = "https://soubhagyalaxmi.com/user/ac-activity?type=shortlisted"
-SESSION_FILE    = "session.json"   # saved browser cookies/storage
+SHORTLISTED_URL  = "https://soubhagyalaxmi.com/user/ac-activity?type=shortlisted"
+INTEREST_ME_URL  = "https://soubhagyalaxmi.com/user/ac-activity?type=interest_me"
+INTEREST_TO_URL  = "https://soubhagyalaxmi.com/user/ac-activity?type=interest_to"
+SESSION_FILE     = "session.json"
 
 def build_search_url(agemin, agemax):
     return (
@@ -38,6 +40,14 @@ _status = {
     "result_count": 0, "step": "", "progress": 0, "total": 0
 }
 _sl_status = {
+    "running": False, "message": "idle", "last_run": None,
+    "result_count": 0, "step": "", "progress": 0, "total": 0
+}
+_ime_status = {
+    "running": False, "message": "idle", "last_run": None,
+    "result_count": 0, "step": "", "progress": 0, "total": 0
+}
+_ito_status = {
     "running": False, "message": "idle", "last_run": None,
     "result_count": 0, "step": "", "progress": 0, "total": 0
 }
@@ -68,6 +78,20 @@ def init_db():
                     profiles JSONB NOT NULL
                 )
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS interest_me_runs (
+                    id       SERIAL PRIMARY KEY,
+                    ran_at   TIMESTAMP DEFAULT NOW(),
+                    profiles JSONB NOT NULL
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS interest_to_runs (
+                    id       SERIAL PRIMARY KEY,
+                    ran_at   TIMESTAMP DEFAULT NOW(),
+                    profiles JSONB NOT NULL
+                )
+            """)
         conn.commit()
     print("✅ Database ready")
 
@@ -83,35 +107,38 @@ def db_save(matched, agemin, agemax, months):
 def db_save_shortlisted(matched):
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO shortlisted_runs (profiles) VALUES (%s)",
-                (json.dumps(matched),)
-            )
+            cur.execute("INSERT INTO shortlisted_runs (profiles) VALUES (%s)", (json.dumps(matched),))
         conn.commit()
 
-def db_latest():
+def db_save_interest_me(matched):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO interest_me_runs (profiles) VALUES (%s)", (json.dumps(matched),))
+        conn.commit()
+
+def db_save_interest_to(matched):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO interest_to_runs (profiles) VALUES (%s)", (json.dumps(matched),))
+        conn.commit()
+
+def _db_latest_from(table):
     try:
         with get_db() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("SELECT profiles, ran_at FROM runs ORDER BY ran_at DESC LIMIT 1")
+                cur.execute(f"SELECT profiles, ran_at FROM {table} ORDER BY ran_at DESC LIMIT 1")
                 row = cur.fetchone()
                 if row:
                     return row["profiles"], row["ran_at"].strftime("%d %b %Y %H:%M")
     except Exception as e:
-        print(f"DB read error: {e}")
+        print(f"DB read error ({table}): {e}")
     return [], None
 
-def db_latest_shortlisted():
-    try:
-        with get_db() as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("SELECT profiles, ran_at FROM shortlisted_runs ORDER BY ran_at DESC LIMIT 1")
-                row = cur.fetchone()
-                if row:
-                    return row["profiles"], row["ran_at"].strftime("%d %b %Y %H:%M")
-    except Exception as e:
-        print(f"DB shortlisted read error: {e}")
-    return [], None
+def db_latest_shortlisted():  return _db_latest_from("shortlisted_runs")
+def db_latest_interest_me():  return _db_latest_from("interest_me_runs")
+def db_latest_interest_to():  return _db_latest_from("interest_to_runs")
+
+def db_latest():              return _db_latest_from("runs")
 
 # ============================================================
 # ASTRO DATA
@@ -404,18 +431,23 @@ def get_shortlisted_ids(page):
     _sl_status["message"] = "Opening shortlisted page..."
     page.goto(SHORTLISTED_URL)
     page.wait_for_timeout(2500)
+    return _get_activity_ids(page)
 
-    ids = []
-    seen = set()
+def get_activity_ids(page, url, label=""):
+    """Generic scraper for any activity page (shortlisted, interest_me, interest_to)."""
+    page.goto(url)
+    page.wait_for_timeout(2500)
+    return _get_activity_ids(page, label)
+
+def _get_activity_ids(page, label=""):
+    ids, seen = [], set()
     for link in page.query_selector_all("a[href*='/profile/']"):
         href = link.get_attribute("href") or ""
         if "/profile/" in href:
             pid = href.split("/profile/")[-1].split("?")[0].strip("/")
             if pid and pid not in seen:
-                seen.add(pid)
-                ids.append(pid)
-
-    print(f"Found {len(ids)} shortlisted profile IDs")
+                seen.add(pid); ids.append(pid)
+    print(f"Found {len(ids)} {label} profile IDs")
     return ids
 
 def extract_profile(page, profile_id):
@@ -571,6 +603,48 @@ def _run_shortlisted_pipeline():
         _sl_status["running"] = False
 
 # ============================================================
+# PIPELINE — generic activity (reused for interest_me & interest_to)
+# ============================================================
+def _run_activity_pipeline(status_ref, activity_url, activity_label, db_save_fn):
+    status_ref.update({"running":True,"step":"login","progress":0,"total":0,
+                       "message":"Checking session..." if os.path.exists(SESSION_FILE) else "Logging in..."})
+    try:
+        with sync_playwright() as p:
+            browser, context, page = get_browser_context(p)
+            status_ref.update({"step":"scanning","message":f"Fetching {activity_label} profiles..."})
+            pids = get_activity_ids(page, activity_url, activity_label)
+            status_ref.update({"step":"scraping","total":len(pids),"message":f"Scraping {len(pids)} profiles..."})
+            raw_profiles = []
+            for idx, pid in enumerate(pids):
+                status_ref["progress"] = idx + 1
+                status_ref["message"]  = f"Fetching {idx+1} of {len(pids)}: {pid}"
+                try:
+                    pd = extract_profile(page, pid)
+                    raw_profiles.append(pd)
+                except Exception as e:
+                    print(f"  Error {pid}: {e}")
+            browser.close()
+        status_ref.update({"step":"matching","progress":0,"total":len(raw_profiles),"message":"Running Ashtakoot matching..."})
+        matched = run_matching(raw_profiles, status_ref)
+        status_ref["message"] = "Saving to database..."
+        db_save_fn(matched)
+        status_ref.update({"result_count":len(matched),"step":"done",
+                           "message":f"Complete — {len(matched)} matches found",
+                           "last_run":datetime.now().strftime("%d %b %Y %H:%M")})
+        print(f"\n✅ {activity_label} done. {len(matched)} matches.")
+    except Exception as e:
+        status_ref.update({"step":"error","message":f"Error: {str(e)}"})
+        print(f"{activity_label} pipeline error: {e}")
+    finally:
+        status_ref["running"] = False
+
+def _run_interest_me_pipeline():
+    _run_activity_pipeline(_ime_status, INTEREST_ME_URL, "Interest Expressed to Me", db_save_interest_me)
+
+def _run_interest_to_pipeline():
+    _run_activity_pipeline(_ito_status, INTEREST_TO_URL, "Interest Expressed by Me", db_save_interest_to)
+
+# ============================================================
 # FLASK API
 # ============================================================
 @app.route("/api/run", methods=["POST"])
@@ -588,6 +662,18 @@ def run_shortlisted():
     if _sl_status["running"]: return jsonify({"error":"Already running"}), 409
     threading.Thread(target=_run_shortlisted_pipeline, daemon=True).start()
     return jsonify({"message":"Shortlisted pipeline started"})
+
+@app.route("/api/run_interest_me", methods=["POST"])
+def run_interest_me():
+    if _ime_status["running"]: return jsonify({"error":"Already running"}), 409
+    threading.Thread(target=_run_interest_me_pipeline, daemon=True).start()
+    return jsonify({"message":"Interest Me pipeline started"})
+
+@app.route("/api/run_interest_to", methods=["POST"])
+def run_interest_to():
+    if _ito_status["running"]: return jsonify({"error":"Already running"}), 409
+    threading.Thread(target=_run_interest_to_pipeline, daemon=True).start()
+    return jsonify({"message":"Interest To pipeline started"})
 
 @app.route("/api/has_results")
 def has_results():
@@ -610,6 +696,22 @@ def get_shortlisted_status():
         count = len(profiles)
     return jsonify({**_sl_status, "result_count": count})
 
+@app.route("/api/interest_me_status")
+def get_interest_me_status():
+    count = _ime_status["result_count"]
+    if count == 0:
+        profiles, _ = db_latest_interest_me()
+        count = len(profiles)
+    return jsonify({**_ime_status, "result_count": count})
+
+@app.route("/api/interest_to_status")
+def get_interest_to_status():
+    count = _ito_status["result_count"]
+    if count == 0:
+        profiles, _ = db_latest_interest_to()
+        count = len(profiles)
+    return jsonify({**_ito_status, "result_count": count})
+
 @app.route("/api/results")
 def get_results():
     profiles, _ = db_latest()
@@ -618,6 +720,16 @@ def get_results():
 @app.route("/api/shortlisted")
 def get_shortlisted():
     profiles, _ = db_latest_shortlisted()
+    return jsonify(profiles)
+
+@app.route("/api/interest_me")
+def get_interest_me():
+    profiles, _ = db_latest_interest_me()
+    return jsonify(profiles)
+
+@app.route("/api/interest_to")
+def get_interest_to():
+    profiles, _ = db_latest_interest_to()
     return jsonify(profiles)
 
 @app.route("/")

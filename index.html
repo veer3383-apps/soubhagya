@@ -378,7 +378,7 @@ const ProfileCard = ({ p, onOpen }) => (
 );
 
 // ── Sidebar ───────────────────────────────────────────────────
-const Sidebar = ({ isOpen, onClose, view, setView, slCount, slStatus, onRunShortlisted }) => (
+const Sidebar = ({ isOpen, onClose, view, setView, slCount, imeCount, itoCount, slStatus, imeStatus, itoStatus, onRunShortlisted, onRunInterestMe, onRunInterestTo }) => (
   <>
     {/* Overlay */}
     {isOpen && (
@@ -427,26 +427,74 @@ const Sidebar = ({ isOpen, onClose, view, setView, slCount, slStatus, onRunShort
             </span>
           )}
         </button>
+
+        <button onClick={()=>{setView('interest_me');onClose();}}
+          className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition-all
+            ${view==='interest_me'?'text-white':'text-slate-600 hover:bg-slate-50'}`}
+          style={view==='interest_me'?{background:'#db2777'}:{}}>
+          <Ic n="heart" size={17}/>
+          <span className="flex-1 text-left">Interested in Me</span>
+          {imeCount > 0 && (
+            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${view==='interest_me'?'bg-white/20 text-white':'bg-pink-100 text-pink-600'}`}>
+              {imeCount}
+            </span>
+          )}
+        </button>
+
+        <button onClick={()=>{setView('interest_to');onClose();}}
+          className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition-all
+            ${view==='interest_to'?'text-white':'text-slate-600 hover:bg-slate-50'}`}
+          style={view==='interest_to'?{background:'#db2777'}:{}}>
+          <Ic n="zap" size={17}/>
+          <span className="flex-1 text-left">My Interests</span>
+          {itoCount > 0 && (
+            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${view==='interest_to'?'bg-white/20 text-white':'bg-pink-100 text-pink-600'}`}>
+              {itoCount}
+            </span>
+          )}
+        </button>
       </nav>
 
-      {/* Shortlisted sync button */}
-      <div className="p-4 border-t border-slate-100">
-        <p className="text-xs text-slate-400 mb-2 px-1">
-          {slStatus?.last_run ? `Last synced: ${slStatus.last_run}` : 'Never synced'}
-        </p>
-        <button onClick={onRunShortlisted} disabled={slStatus?.running}
-          className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-colors
-            ${slStatus?.running?'bg-slate-100 text-slate-400':'bg-slate-900 hover:bg-slate-700 text-white'}`}>
-          {slStatus?.running
-            ? <><Ic n="loader" size={14} cls="spin"/> Syncing...</>
-            : <><Ic n="sync" size={14}/> Sync Shortlisted</>}
-        </button>
-        {slStatus?.running && (
-          <p className="text-xs text-pink-600 text-center mt-2 truncate">{slStatus.message}</p>
-        )}
+      {/* Sync buttons */}
+      <div className="p-4 border-t border-slate-100 space-y-2">
+        {[
+          { label:'Shortlisted',       st:slStatus,  run:onRunShortlisted  },
+          { label:'Interested in Me',  st:imeStatus, run:onRunInterestMe   },
+          { label:'My Interests',      st:itoStatus, run:onRunInterestTo   },
+        ].map(({label, st, run}) => (
+          <div key={label}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-slate-400 truncate">{label}</span>
+              {st?.last_run && <span className="text-[10px] text-slate-300">{st.last_run}</span>}
+            </div>
+            <button onClick={run} disabled={st?.running}
+              className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-colors
+                ${st?.running?'bg-slate-100 text-slate-400':'bg-slate-900 hover:bg-slate-700 text-white'}`}>
+              {st?.running
+                ? <><Ic n="loader" size={12} cls="spin"/> Syncing...</>
+                : <><Ic n="sync" size={12}/> Sync</>}
+            </button>
+            {st?.running && <p className="text-[10px] text-pink-600 mt-1 truncate">{st.message}</p>}
+          </div>
+        ))}
       </div>
     </div>
   </>
+);
+
+// ── Empty sync state ─────────────────────────────────────────
+const EmptySync = ({ icon, title, desc, onOpen }) => (
+  <div className="max-w-7xl mx-auto py-20 text-center">
+    <div className="w-20 h-20 bg-pink-50 rounded-full flex items-center justify-center mx-auto mb-4 text-pink-400">
+      <Ic n={icon} size={32}/>
+    </div>
+    <h2 className="text-2xl font-bold mb-2">{title}</h2>
+    <p className="text-slate-400 mb-6">{desc}</p>
+    <button onClick={onOpen}
+      className="inline-flex items-center gap-2 px-6 py-3 text-white rounded-2xl font-bold" style={{background:'#db2777'}}>
+      <Ic n="menu" size={16}/> Open Sidebar to Sync
+    </button>
+  </div>
 );
 
 // ── Main App ─────────────────────────────────────────────────
@@ -463,9 +511,13 @@ function App() {
   const [st, setSt]             = useState({running:false,message:'',step:'',progress:0,total:0});
 
   // Shortlisted
-  const [view, setView]           = useState('matches');
-  const [slProfiles, setSlProfiles] = useState([]);
-  const [slSt, setSlSt]           = useState({running:false,message:'idle',step:'',progress:0,total:0,last_run:null,result_count:0});
+  const [view, setView]             = useState('matches');
+  const [slProfiles, setSlProfiles]   = useState([]);
+  const [slSt, setSlSt]             = useState({running:false,message:'idle',step:'',progress:0,total:0,last_run:null,result_count:0});
+  const [imeProfiles, setImeProfiles] = useState([]);
+  const [imeSt, setImeSt]           = useState({running:false,message:'idle',step:'',progress:0,total:0,last_run:null,result_count:0});
+  const [itoProfiles, setItoProfiles] = useState([]);
+  const [itoSt, setItoSt]           = useState({running:false,message:'idle',step:'',progress:0,total:0,last_run:null,result_count:0});
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Shared
@@ -483,16 +535,21 @@ function App() {
     fetch('/api/has_results').then(r=>r.json())
       .then(d=>{setInfo(d);setPhase('startup');})
       .catch(()=>setPhase('startup'));
-    // Load shortlisted status
     fetch('/api/shortlisted_status').then(r=>r.json()).then(setSlSt).catch(()=>{});
+    fetch('/api/interest_me_status').then(r=>r.json()).then(setImeSt).catch(()=>{});
+    fetch('/api/interest_to_status').then(r=>r.json()).then(setItoSt).catch(()=>{});
   },[]);
 
   useEffect(()=>{
     localStorage.setItem('filters', JSON.stringify(filters));
   },[filters]);
 
-  const loadResults    = useCallback(()=>fetch('/api/results').then(r=>r.json()).then(d=>setProfiles(Array.isArray(d)?d:[])), []);
+  const loadResults     = useCallback(()=>fetch('/api/results').then(r=>r.json()).then(d=>setProfiles(Array.isArray(d)?d:[])), []);
   const loadShortlisted = useCallback(()=>fetch('/api/shortlisted').then(r=>r.json()).then(d=>setSlProfiles(Array.isArray(d)?d:[])), []);
+  const loadInterestMe  = useCallback(()=>fetch('/api/interest_me').then(r=>r.json()).then(d=>setImeProfiles(Array.isArray(d)?d:[])), []);
+  const loadInterestTo  = useCallback(()=>fetch('/api/interest_to').then(r=>r.json()).then(d=>setItoProfiles(Array.isArray(d)?d:[])), []);
+  const imePollRef = useRef(null);
+  const itoPollRef = useRef(null);
 
   const pollStatus = useCallback(async()=>{
     const d = await fetch('/api/status').then(r=>r.json());
@@ -521,12 +578,25 @@ function App() {
     }
   },[loadShortlisted]);
 
+  const pollImeStatus = useCallback(async()=>{
+    const d = await fetch('/api/interest_me_status').then(r=>r.json());
+    setImeSt(d);
+    if(!d.running && d.step==='done'){ clearInterval(imePollRef.current); await loadInterestMe(); }
+    if(!d.running && d.step==='error'){ clearInterval(imePollRef.current); }
+  },[loadInterestMe]);
+
+  const pollItoStatus = useCallback(async()=>{
+    const d = await fetch('/api/interest_to_status').then(r=>r.json());
+    setItoSt(d);
+    if(!d.running && d.step==='done'){ clearInterval(itoPollRef.current); await loadInterestTo(); }
+    if(!d.running && d.step==='error'){ clearInterval(itoPollRef.current); }
+  },[loadInterestTo]);
+
   const handleExisting = useCallback(async()=>{
-    await loadResults();
-    await loadShortlisted();
+    await Promise.all([loadResults(), loadShortlisted(), loadInterestMe(), loadInterestTo()]);
     try{ const s=localStorage.getItem('filters'); if(s) setFilters(JSON.parse(s)); }catch{}
     setPhase('ready');
-  },[loadResults, loadShortlisted]);
+  },[loadResults, loadShortlisted, loadInterestMe, loadInterestTo]);
 
   const handleFresh = useCallback(async(params)=>{
     setFilters(params); setPhase('running'); setError(null);
@@ -542,10 +612,30 @@ function App() {
     setSidebarOpen(false);
   },[pollSlStatus]);
 
-  useEffect(()=>()=>{clearInterval(pollRef.current);clearInterval(slPollRef.current);},[]);
+  const handleRunInterestMe = useCallback(async()=>{
+    await fetch('/api/run_interest_me',{method:'POST'});
+    clearInterval(imePollRef.current);
+    imePollRef.current = setInterval(pollImeStatus,1500);
+    setSidebarOpen(false);
+  },[pollImeStatus]);
+
+  const handleRunInterestTo = useCallback(async()=>{
+    await fetch('/api/run_interest_to',{method:'POST'});
+    clearInterval(itoPollRef.current);
+    itoPollRef.current = setInterval(pollItoStatus,1500);
+    setSidebarOpen(false);
+  },[pollItoStatus]);
+
+  useEffect(()=>()=>{
+    clearInterval(pollRef.current); clearInterval(slPollRef.current);
+    clearInterval(imePollRef.current); clearInterval(itoPollRef.current);
+  },[]);
 
   // Active profiles based on view
-  const activeProfiles = view==='matches' ? profiles : slProfiles;
+  const activeProfiles = view==='matches' ? profiles
+    : view==='shortlisted'  ? slProfiles
+    : view==='interest_me'  ? imeProfiles
+    : itoProfiles;
 
   const casts  = useMemo(()=>['All',...new Set(activeProfiles.map(p=>p.Cast).filter(Boolean))].sort(),[activeProfiles]);
   const cities = useMemo(()=>['All',...new Set(activeProfiles.map(p=>p.City).filter(Boolean))].sort(),[activeProfiles]);
@@ -562,23 +652,29 @@ function App() {
         :(a.rank||999)-(b.rank||999));
   },[activeProfiles,search,cast,city,sort]);
 
-  const showProgress = phase==='running';
-  const showSlProgress = slSt.running;
+  const showProgress    = phase==='running';
+  const showSlProgress  = slSt.running  && !showProgress;
+  const showImeProgress = imeSt.running && !showProgress && !showSlProgress;
+  const showItoProgress = itoSt.running && !showProgress && !showSlProgress && !showImeProgress;
 
   return (
     <div className="min-h-screen bg-slate-50">
       {phase==='startup' && <StartupDialog info={info} onExisting={handleExisting} onFresh={handleFresh}/>}
-      {showProgress && <ProgressOverlay st={st} steps={STEPS} title="Running Main Pipeline"/>}
-      {showSlProgress && !showProgress && <ProgressOverlay st={slSt} steps={SL_STEPS} title="Syncing Shortlisted"/>}
+      {showProgress    && <ProgressOverlay st={st}    steps={STEPS}    title="Running Main Pipeline"/>}
+      {showSlProgress  && <ProgressOverlay st={slSt}  steps={SL_STEPS} title="Syncing Shortlisted"/>}
+      {showImeProgress && <ProgressOverlay st={imeSt} steps={SL_STEPS} title="Syncing — Interested in Me"/>}
+      {showItoProgress && <ProgressOverlay st={itoSt} steps={SL_STEPS} title="Syncing — My Interests"/>}
 
       <Sidebar
         isOpen={sidebarOpen}
         onClose={()=>setSidebarOpen(false)}
         view={view}
         setView={(v)=>{setView(v); setSearch(''); setCast('All'); setCity('All');}}
-        slCount={slProfiles.length}
-        slStatus={slSt}
+        slCount={slProfiles.length}   imeCount={imeProfiles.length}  itoCount={itoProfiles.length}
+        slStatus={slSt}               imeStatus={imeSt}              itoStatus={itoSt}
         onRunShortlisted={handleRunShortlisted}
+        onRunInterestMe={handleRunInterestMe}
+        onRunInterestTo={handleRunInterestTo}
       />
 
       <div className="p-4 md:p-8">
@@ -595,18 +691,23 @@ function App() {
                 <div className="flex items-center gap-3 mb-1">
                   <h1 className="text-4xl md:text-5xl font-black"
                     style={{background:'linear-gradient(to right,#db2777,#fb7185)',WebkitBackgroundClip:'text',backgroundClip:'text',color:'transparent'}}>
-                    {view==='matches' ? 'Potential Soulmates' : 'Shortlisted'}
+                    {view==='matches'     ? 'Potential Soulmates'
+                    :view==='shortlisted' ? 'Shortlisted'
+                    :view==='interest_me' ? 'Interested in Me'
+                    :                      'My Interests'}
                   </h1>
-                  {view==='shortlisted' && (
-                    <span className="text-xs font-bold px-3 py-1 rounded-full text-white mt-2" style={{background:'#db2777'}}>
-                      ★ SHORTLISTED
+                  {view!=='matches' && (
+                    <span className="text-xs font-bold px-3 py-1 rounded-full text-white mt-2 shrink-0" style={{background:'#db2777'}}>
+                      {view==='shortlisted'?'★ SHORTLISTED':view==='interest_me'?'💌 THEY LIKE ME':'💘 I LIKE THEM'}
                     </span>
                   )}
                 </div>
                 <p className="text-slate-400 text-sm">
                   Matches for <strong className="text-slate-800">Sonali</strong>
-                  {view==='matches' && info?.last_run && <span className="ml-2">· Last run: {info.last_run}</span>}
-                  {view==='shortlisted' && slSt?.last_run && <span className="ml-2">· Synced: {slSt.last_run}</span>}
+                  {view==='matches'     && info?.last_run    && <span className="ml-2">· Last run: {info.last_run}</span>}
+                  {view==='shortlisted' && slSt?.last_run    && <span className="ml-2">· Synced: {slSt.last_run}</span>}
+                  {view==='interest_me' && imeSt?.last_run   && <span className="ml-2">· Synced: {imeSt.last_run}</span>}
+                  {view==='interest_to' && itoSt?.last_run   && <span className="ml-2">· Synced: {itoSt.last_run}</span>}
                   {view==='matches' && filters.agemin && filters.agemax && filters.months && (
                     <span className="block mt-1">
                       Age {filters.agemin}–{filters.agemax} · Active within {filters.months} {filters.months===1?'month':'months'}
@@ -663,22 +764,19 @@ function App() {
           </div>
         </section>
 
-        {/* Shortlisted empty — never synced */}
+        {/* Empty states */}
         {view==='shortlisted' && slProfiles.length===0 && !slSt.running && (
-          <div className="max-w-7xl mx-auto py-20 text-center">
-            <div className="w-20 h-20 bg-pink-50 rounded-full flex items-center justify-center mx-auto mb-4 text-pink-400">
-              <Ic n="bookmark" size={32}/>
-            </div>
-            <h2 className="text-2xl font-bold mb-2">No shortlisted data yet</h2>
-            <p className="text-slate-400 mb-6">Open the sidebar and click <strong>Sync Shortlisted</strong> to fetch profiles you've shortlisted on the site.</p>
-            <button onClick={()=>setSidebarOpen(true)}
-              className="inline-flex items-center gap-2 px-6 py-3 text-white rounded-2xl font-bold" style={{background:'#db2777'}}>
-              <Ic n="menu" size={16}/> Open Sidebar
-            </button>
-          </div>
+          <EmptySync icon="bookmark" title="No shortlisted data yet"
+            desc="Sync profiles you've shortlisted on the site." onOpen={()=>setSidebarOpen(true)}/>
         )}
-
-        {/* All matches empty */}
+        {view==='interest_me' && imeProfiles.length===0 && !imeSt.running && (
+          <EmptySync icon="heart" title="No data yet"
+            desc="Sync profiles that have expressed interest in you." onOpen={()=>setSidebarOpen(true)}/>
+        )}
+        {view==='interest_to' && itoProfiles.length===0 && !itoSt.running && (
+          <EmptySync icon="zap" title="No data yet"
+            desc="Sync profiles you've expressed interest in." onOpen={()=>setSidebarOpen(true)}/>
+        )}
         {view==='matches' && phase==='ready' && profiles.length===0 && (
           <div className="max-w-7xl mx-auto py-20 text-center">
             <div className="w-20 h-20 bg-pink-50 rounded-full flex items-center justify-center mx-auto mb-4 text-pink-400">
